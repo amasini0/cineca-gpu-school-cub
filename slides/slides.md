@@ -146,7 +146,8 @@ layout: two-cols-header
 
 ::left::
 
-<div style="width: 100%;">
+<div style="width: 95%;">
+
 Collective primitives for each level of the CUDA threading model:
 
 1. <span style="color: #72b300"> **Warp-level primitives** </span>
@@ -165,8 +166,11 @@ Collective primitives for each level of the CUDA threading model:
 ::right::
 
 <div style="width: 90%;">
+
 <img src="/images/logo_cub.png" style="display: block; margin: auto;">
+
 </div>
+
 
 ---
 level: 2
@@ -176,6 +180,7 @@ level: 2
 <br>
 
 <div style="width: 90%;">
+
 There are 4 central features in CUB:
 
 1. <span style="color: #72b300;">**Generic programming**:</span> CUB uses C++ templates to provide flexible, reusable kernel code
@@ -185,16 +190,18 @@ There are 4 central features in CUB:
 3. <span style="color: #72b300;">**Flexible data arrangement**:</span> CUB collectives operate on data partitioned across groups of threads. Efficiency can be increased by setting partioning granularity or memory arrangement
 
 4. <span style="color: #72b300;">**Static tuning and co-tuning**:</span> most CUB primitives provide alternative algorithmic strategies and variable parallelism levels, which can be coupled to enclosing kernels
+
 </div>
 
 ---
 level: 2
 ---
 
-# Why use CUB?
+# Why Use CUB?
 <br>
 
 <div style="width: 90%;">
+
 A few benefits of using CUB in your kernels:
 
 - <span style="color: #72b300">**Simplicity of composition**:</span> complex parallel operations can be easily sequenced and nested.
@@ -206,16 +213,18 @@ A few benefits of using CUB in your kernels:
 - <span style="color: #72b300">**Increased productivity**:</span> using CUB simplifies writing kernel code, and eases its maintenance
 
 - <span style="color: #72b300">**Code robustness**:</span> CUB Just Works™ with arbitrary data types and widths of parallelism (not limited to C++ types or powers of two threads per block)
+
 </div>
 
 ---
 level: 2
 ---
 
-# How to use CUB
+# How to Use CUB
 <br>
 
 <div style="width: 90%">
+
 CUB is part of CCCL, which is <span style="color: #72b300;">included in the CUDA Toolkit</span> (so you already have it). The rest depends on the compiler you want to use:
 
 - When using `nvcc` the relevant header paths are automatically added during compilation, you only need to `#include <cub/cub.h>`
@@ -229,21 +238,17 @@ If the CCCL version in the toolkit is a bit old you can always <span style="colo
 git clone https://github.com/NVIDIA/cccl.git
 nvcc -Icccl/thrust -Icccl/libcudacxx/include -Icccl/cub main.cu -o main
 ```
+
 </div>
 
 ---
 ---
 
-# Example: block-wide sorting
+# Warp-Wide Collectives
 <br>
 
----
----
+<div style="width: 90%;"> 
 
-# Warp-wide collectives
-<br>
-
-<div style="width: 90%;">
 CUB warp-level algorithms are specialized for execution by threads in the same CUDA warp.
 These algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 
@@ -253,18 +258,81 @@ These algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 - <span style="color: #72b300">`cub::WarpReduce`</span> computes reduction of items partitioned across a warp
 - <span style="color: #72b300">`cub::WarpScan`</span> computes a prefix scan of items partitioned across a warp
 - <span style="color: #72b300">`cub::WarpStore`</span> stores items partitioned across a warp to a linear segment of memory
+
 </div>
 
 ---
+layout: two-cols-header
+level: 2
 ---
 
-# Block-wide collectives
+# Reductions with <span style="color: #72b300;">`cub::WarpReduce`</span>
+<br>
+
+::left::
+<div>
+
+```c++
+using WarpReducer = cub::WarpReduce<int, 27>;
+
+constexpr size_t num_warps = 4;
+constexpr size_t num_threads = num_warps * 32;
+
+__global__ void warpReduction(int* vec, int* out) {
+    // allocate shared memory for thread communication
+    __shared__ WarpReducer::TempStorage temp[num_warps];
+
+    // get global thread idx
+    size_t global_idx = blockIdx.x*blockDim.x + threadIdx.x;
+
+    if (global_idx < num_threads) {
+        // get warp index and thread data
+        size_t warp_idx = global_idx / 32;
+        int thread_data = vec[global_idx];
+
+        // compute reduction inside each warp and copy to output
+        int warp_sum = WarpReducer(temp[warp_idx]).Sum(thread_data);
+        if (global_idx % 32 == 0) out[warp_idx] = warp_sum;
+    }
+}
+```
+</div>
+
+:: right::
+
+<div style="width: 85%; margin: auto; padding-left: 15px">
+
+Steps for reduction:
+
+1. Specify in template data type and number of threads (max 32)
+2. Allocate shared memory required for thread communication
+3. Perform reduction operation with `.Sum(*)` or `.Reduce(*, op)`
+4. Results are collected in `lane0` of each warp
+
+</div>
+
+<div style="width: 100%; position: fixed; bottom: 20px; right: 80px" align="right"> 
+  <a href="https://godbolt.org/z/nGGbz6b18">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="2%">
+  </a>
+</div>
+---
+level: 2
+---
+
+# Prefix Scan with <span style="color: #72b300;">`cub::WarpScan`</span>
 <br>
 
 ---
 ---
 
-# Device-wide collectives
+# Block-Wide Collectives
+<br>
+
+---
+---
+
+# Device-Wide Collectives
 <br>
 
 ---
@@ -273,14 +341,16 @@ These algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 <br>
 
 <div style="width: 90%;">
+
 Some useful links:
 
 - <span style="color: #72b300;">NVIDIA/cccl GitHub repository</span> 
     - https://github.com/NVIDIA/cccl
-- <span style="color: #72b300;">CUB official documentation:</span> 
+- <span style="color: #72b300;">CUB official documentation</span> 
     - https://nvidia.github.io/cccl/cub/
-- <span style="color: #72b300;">GTC Training on CCCL:</span> 
+- <span style="color: #72b300;">GTC Training on CCCL</span> 
     - https://www.nvidia.com/en-us/on-demand/session/gtcspring21-cwes1801/
+
 </div>
 
 ---
