@@ -58,7 +58,7 @@ hideInToc: true
 
 <br>
 
-<Toc minDepth="1" maxDepth="2"></Toc>
+<Toc minDepth="1" maxDepth="1"></Toc>
 
 ---
 ---
@@ -234,9 +234,10 @@ CUB is part of CCCL, which is <span style="color: #72b300;">included in the CUDA
 <br>
 
 If the CCCL version in the toolkit is a bit old you can always <span style="color: #72b300;">get the latest version from GitHub</span> and use it directly like so (see compatibility table [here](https://github.com/NVIDIA/cccl?tab=readme-ov-file#cuda-toolkit-ctk-compatibility))
-```bash
-git clone https://github.com/NVIDIA/cccl.git
-nvcc -Icccl/thrust -Icccl/libcudacxx/include -Icccl/cub main.cu -o main
+
+```shell
+git clone https://github.com/NVIDIA/cccl.gitsh
+nvcc -I cccl/thrust -I cccl/libcudacxx/include -I cccl/cub main.cu -o main.cu
 ```
 
 </div>
@@ -250,7 +251,6 @@ nvcc -Icccl/thrust -Icccl/libcudacxx/include -Icccl/cub main.cu -o main
 <div style="width: 90%;"> 
 
 CUB warp-level algorithms are specialized for execution by threads in the same CUDA warp.
-These algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 
 - <span style="color: #72b300">`cub::WarpExchange`</span> rearranges data partitioned across a warp
 - <span style="color: #72b300">`cub::WarpLoad`</span> loads a linear segment of items from memory into a warp
@@ -258,6 +258,10 @@ These algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 - <span style="color: #72b300">`cub::WarpReduce`</span> computes reduction of items partitioned across a warp
 - <span style="color: #72b300">`cub::WarpScan`</span> computes a prefix scan of items partitioned across a warp
 - <span style="color: #72b300">`cub::WarpStore`</span> stores items partitioned across a warp to a linear segment of memory
+
+<br>
+
+**Note**: these algorithms can only be invoked by `1 <= n <= 32` *consecutive* threads.
 
 </div>
 
@@ -270,11 +274,11 @@ level: 2
 <br>
 
 ::left::
+
 <div>
 
 ```c++
 using WarpReducer = cub::WarpReduce<int, 27>;
-
 constexpr size_t num_warps = 4;
 constexpr size_t num_threads = num_warps * 32;
 
@@ -282,12 +286,12 @@ __global__ void warpReduction(int* vec, int* out) {
     // allocate shared memory for thread communication
     __shared__ WarpReducer::TempStorage temp[num_warps];
 
-    // get global thread idx
+    // get global thread idx and warp idx
     size_t global_idx = blockIdx.x*blockDim.x + threadIdx.x;
+    size_t warp_idx = global_idx / 32;
 
     if (global_idx < num_threads) {
-        // get warp index and thread data
-        size_t warp_idx = global_idx / 32;
+        // assign thread local data
         int thread_data = vec[global_idx];
 
         // compute reduction inside each warp and copy to output
@@ -296,32 +300,85 @@ __global__ void warpReduction(int* vec, int* out) {
     }
 }
 ```
+
 </div>
 
 :: right::
 
 <div style="width: 85%; margin: auto; padding-left: 15px">
 
-Steps for reduction:
+**Steps for reduction**:
 
-1. Specify in template data type and number of threads (max 32)
+1. Specify data type and number of threads (max 32) in template
 2. Allocate shared memory required for thread communication
-3. Perform reduction operation with `.Sum(*)` or `.Reduce(*, op)`
+3. Perform reduction operation with `.Sum(...)` or `.Reduce(..., op)`
 4. Results are collected in `lane0` of each warp
 
 </div>
 
-<div style="width: 100%; position: fixed; bottom: 20px; right: 80px" align="right"> 
+<div style="width: 100%; position: fixed; bottom: 20px; right: 60px" align="right"> 
   <a href="https://godbolt.org/z/nGGbz6b18">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="2%">
   </a>
 </div>
+
 ---
 level: 2
+layout: two-cols-header
 ---
 
 # Prefix Scan with <span style="color: #72b300;">`cub::WarpScan`</span>
 <br>
+
+::left::
+
+<div>
+
+```c++
+using WarpScanner = cub::WarpScan<double, 21>;
+constexpr size_t num_warps = 48;
+constexpr size_t num_threads = num_warps * 32;
+
+__global__ void warpScan(double* vec, double* out, double* agg) {
+    // allocate shared memory for thread communication
+    __shared__ WarpScanner::TempStorage temp[num_warps];
+
+    // get global thread idx and warp idx
+    size_t global_idx = blockIdx.x*blockDim.x + threadIdx.x;
+    size_t warp_idx = global_idx / 32;
+
+    if (global_idx < num_threads) {
+        // init thread local variables and define reduction op
+        double aggregate, thread_prod, thread_data = vec[global_idx];
+        auto op = [=](double x, double y){ return x*y; };
+
+        // compute reduction inside each warp
+        WarpScanner(temp[warp_idx]).InclusiveScan(
+            thread_data, thread_prod, op, warp_aggregate);
+    }
+}
+```
+
+</div>
+
+::right::
+
+<div style="width 85%; margin: auto; padding-left: 40px;">
+
+**Steps for scan**:
+
+1. Specify data type and number of threads (max 32) in template
+2. Allocate shared memory required for thread communication
+3. Call `.InclusiveScan(...)` or one its variants
+4. Pass the desired binary op (except when using `.PrefixSum(...)`)
+
+</div>
+
+<div style="width: 100%; position: fixed; bottom: 20px; right: 60px" align="right"> 
+  <a href="https://godbolt.org/z/cYzoT67W9">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="2%">
+  </a>
+</div>
 
 ---
 ---
@@ -329,11 +386,77 @@ level: 2
 # Block-Wide Collectives
 <br>
 
+<div style="width: 92%;">
+
+CUB block-level algorithms are specialized for execution by threads in the same CUDA block.
+
+- Block-level variants for all warp-level algorithms:
+
+    <span style="color: #72b300">`cub::BlockExchange`</span>,
+    <span style="color: #72b300">`cub::BlockLoad`</span>, 
+    <span style="color: #72b300">`cub::BlockMergeSort`</span>, 
+    <span style="color: #72b300">`cub::BlockReduce`</span>, 
+    <span style="color: #72b300">`cub::BlockScan`</span>, 
+    <span style="color: #72b300">`cub::BlockStore`</span>
+
+- New algorithms:
+    - <span style="color: #72b300">`cub::BlockAdjacentDifference`</span> computes the difference between adjacent items 
+    - <span style="color: #72b300">`cub::BlockDiscontinuity`</span> flags discontinuities in an ordered set of items
+    - <span style="color: #72b300">`cub::BlockHistogram`</span> constructs block-wide histograms from data samples
+    - <span style="color: #72b300">`cub::BlockRadixSort`</span> sorts items using radix sorting method
+    - <span style="color: #72b300">`cub::BlockRunLengthDecode`</span> decodes a run-length encoded sequence of items
+    - <span style="color: #72b300">`cub::Shuffle`</span> shifts or rotates items between threads
+
+</div>
+
 ---
 ---
 
 # Device-Wide Collectives
 <br>
+
+<div style="width: 90%">
+
+CUB device-level single-problem parallel algorithms:
+
+- Device-level variants of some block-level algorithms: 
+
+    <span style="color: #72b300">`cub::DeviceAdjacentDifference`</span>,
+    <span style="color: #72b300">`cub::DeviceHistogram`</span>,
+    <span style="color: #72b300">`cub::DeviceMergeSort`</span>,
+    <span style="color: #72b300">`cub::DeviceRadixSort`</span>,
+    <span style="color: #72b300">`cub::DeviceReduce`</span>,
+    <span style="color: #72b300">`cub::DeviceScan`</span>
+
+- New algorithms:
+    - <span style="color: #72b300">`cub::DeviceFor`</span> provides device-wide, parallel operations for iterating over data residing within device-accessible memory
+    - <span style="color: #72b300">`cub::DevicePartition`</span> partitions data residing within device-accessible memory
+    - <span style="color: #72b300">`cub::DeviceRunLengthEncode`</span> identifies "runs" of same-valued items within a sequence
+    - <span style="color: #72b300">`cub::DeviceSelect`</span> compacts data residing within device-accessible memory
+
+</div>
+
+---
+---
+
+# Device-Wide Batched Collectives 
+<br>
+
+<div style="width: 92%">
+
+CUB device-level segmented-problem (batched) parallel algorithms:
+
+- <span style="color: #72b300">`cub::DeviceSegmentedSort`</span> computes batched sort across non-overlapping data sequences
+- <span style="color: #72b300">`cub::DeviceSegmentedRadixSort`</span> computes batched radix sort across non-overlapping data sequences
+- <span style="color: #72b300">`cub::DeviceSegmentedReduce`</span> computes reductions across multiple data sequences
+- <span style="color: #72b300">`cub::DeviceCopy`</span> provides device-wide, parallel operations for batched copying of data
+- <span style="color: #72b300">`cub::DeviceMemcpy`</span> provides device-wide, parallel operations for batched copying of data
+
+<br>
+
+**Note**: as for non-batched algorithms, data must be within device-accessible memory.
+</div>
+
 
 ---
 ---
@@ -345,16 +468,19 @@ level: 2
 Some useful links:
 
 - <span style="color: #72b300;">NVIDIA/cccl GitHub repository</span> 
+
     - https://github.com/NVIDIA/cccl
 - <span style="color: #72b300;">CUB official documentation</span> 
+
     - https://nvidia.github.io/cccl/cub/
 - <span style="color: #72b300;">GTC Training on CCCL</span> 
+
     - https://www.nvidia.com/en-us/on-demand/session/gtcspring21-cwes1801/
 
 </div>
 
 ---
-layout: end
+layout: center
 hideInToc: true
 ---
 
