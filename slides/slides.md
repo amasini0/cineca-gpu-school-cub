@@ -245,6 +245,34 @@ nvcc -I cccl/thrust -I cccl/libcudacxx/include -I cccl/cub main.cu -o main.cu
 ---
 ---
 
+# Common patterns
+<br>
+
+<div style="width: 90%">
+
+CUB’s algorithms are unique at each layer, but offer similar usage experiences:
+
+- they are provided as <span style="color: #72b300">classes</span>,
+- they require <span style="color: #72b300">temporary storage</span> for internal data communication,
+- they use <span style="color: #72b300">specialized implementations</span> depending on compile-time and runtime information.
+
+<br>
+
+Invoking any CUB algorithm follows the same general pattern:
+
+1. Select the class for the desired algorithm
+3. Allocate the temporary storage
+4. Pass the temporary storage to the algorithm
+5. Invoke it via the appropriate member function
+
+
+</div>
+
+
+
+---
+---
+
 # Warp-Wide Collectives
 <br>
 
@@ -278,26 +306,27 @@ level: 2
 <div>
 
 ```c++
-using WarpReducer = cub::WarpReduce<int, 27>;
-constexpr size_t num_warps = 4;
-constexpr size_t num_threads = num_warps * 32;
+using WarpReducer = cub::WarpReduce<int, threads_per_warp>;
 
 __global__ void warpReduction(int* vec, int* out) {
-    // allocate shared memory for thread communication
-    __shared__ WarpReducer::TempStorage temp[num_warps];
+  // Allocate shared memory for thread communication
+  __shared__ WarpReducer::TempStorage temp[warps_per_block];
 
-    // get global thread idx and warp idx
-    size_t global_idx = blockIdx.x*blockDim.x + threadIdx.x;
-    size_t warp_idx = global_idx / 32;
+  if (threadIdx.x % 32 < threads_per_warp) {
+    // Assign thread local variables and data
+    int warp_lid = threadIdx.x / 32;
+    int warp_gid = blockIdx.x * warps_per_block + warp_lid;
+    int thread_gid = global_wid * threads_per_warp
+                   + threadIdx.x % 32; 
+    int thread_data = vec[global_tid];
 
-    if (global_idx < num_threads) {
-        // assign thread local data
-        int thread_data = vec[global_idx];
+    // Compute reduction
+    int warp_sum = WarpReducer(temp[local_wid])
+                  .Sum(thread_data);
 
-        // compute reduction inside each warp and copy to output
-        int warp_sum = WarpReducer(temp[warp_idx]).Sum(thread_data);
-        if (global_idx % 32 == 0) out[warp_idx] = warp_sum;
-    }
+    // Output from lane0
+    if (threadIdx.x % 32 == 0) out[global_wid] = warp_sum;
+  }
 }
 ```
 
@@ -305,20 +334,22 @@ __global__ void warpReduction(int* vec, int* out) {
 
 :: right::
 
-<div style="width: 85%; margin: auto; padding-left: 15px">
+<div style="width: 85%; margin: auto; padding-left: 15px;">
 
 **Steps for reduction**:
 
-1. Specify data type and number of threads (max 32) in template
-2. Allocate shared memory required for thread communication
-3. Perform reduction operation with `.Sum(...)` or `.Reduce(..., op)`
-4. Results are collected in `lane0` of each warp
+1. specialize template with data type and logical warp size (max 32),
+2. allocate block shared memory for thread communication,
+3. initialize `warpReducer` object passing current warp shared memory slot, 
+4. reduce to `lane0` using one reduction function.
+
+All available reductions are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpReduce.html).
 
 </div>
 
-<div style="width: 100%; position: fixed; bottom: 20px; right: 60px" align="right"> 
-  <a href="https://godbolt.org/z/nGGbz6b18">
-    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="2%">
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/ebsvWc1vz">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
 
@@ -335,27 +366,26 @@ layout: two-cols-header
 <div>
 
 ```c++
-using WarpScanner = cub::WarpScan<double, 21>;
-constexpr size_t num_warps = 48;
-constexpr size_t num_threads = num_warps * 32;
+using WarpScanner = cub::WarpScan<int, threads_per_warp>;
 
-__global__ void warpScan(double* vec, double* out, double* agg) {
-    // allocate shared memory for thread communication
-    __shared__ WarpScanner::TempStorage temp[num_warps];
+__global__ void warpScan(int* vec, int* out, int* agg) {
+  // Allocate shared memory for thread communication
+  __shared__ WarpScanner::TempStorage temp[warps_per_block];
 
-    // get global thread idx and warp idx
-    size_t global_idx = blockIdx.x*blockDim.x + threadIdx.x;
-    size_t warp_idx = global_idx / 32;
-
-    if (global_idx < num_threads) {
-        // init thread local variables and define reduction op
-        double aggregate, thread_prod, thread_data = vec[global_idx];
-        auto op = [=](double x, double y){ return x*y; };
-
-        // compute reduction inside each warp
-        WarpScanner(temp[warp_idx]).InclusiveScan(
-            thread_data, thread_prod, op, warp_aggregate);
-    }
+  if (threadIdx.x % 32 < threads_per_warp) {
+    // Assign thread local variables and data
+    int warp_lid = threadIdx.x / 32;
+    int warp_gid = blockIdx.x * warps_per_block + warp_lid;
+    int thread_gid = warp_gid * threads_per_warp 
+                   + threadIdx % 32;
+    int thread_data = vec[global_tid];
+    int thread_prod, warp_aggregate;
+    
+    // Compute scan inside each warp
+    WarpScanner(temp[warp_lid]).InclusiveScan(
+      thread_data, thread_prod, op, warp_aggregate);
+    // ...
+  }
 }
 ```
 
@@ -363,20 +393,138 @@ __global__ void warpScan(double* vec, double* out, double* agg) {
 
 ::right::
 
-<div style="width 85%; margin: auto; padding-left: 40px;">
+<div style="width: 85%; margin: auto; padding-left: 15px;">
 
 **Steps for scan**:
 
-1. Specify data type and number of threads (max 32) in template
-2. Allocate shared memory required for thread communication
-3. Call `.InclusiveScan(...)` or one its variants
-4. Pass the desired binary op (except when using `.PrefixSum(...)`)
+1. specialize template with data type and logical warp size (max 32),
+2. allocate block shared memory for in-warp thread communication,
+3. initialize `WarpScanner` object passing current warp shared memory slot,
+4. call `.InclusiveScan(...)` or one its variants.
+
+All available variants are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpScan.html).
 
 </div>
 
-<div style="width: 100%; position: fixed; bottom: 20px; right: 60px" align="right"> 
-  <a href="https://godbolt.org/z/cYzoT67W9">
-    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="2%">
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/q5bP7bqYG">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
+
+---
+layout: two-cols-header
+level:2 
+---
+
+# Memory arrangements
+<br>
+
+<div style="width: 92%">
+Many CUDA kernels have performance benefits if we let each thread process more than one datum. However, these benifits strongly depends on how our data are arranged in memory.
+
+CUB primitives allow us to efficiently manipulate data arranged in two specific formats.
+<br>
+
+</div>
+
+::left::
+
+<div style="width: 95%">
+<img src="https://nvidia.github.io/cccl/cub/_images/blocked.png" style="padding-left: 50px;">
+
+**Blocked arrangement**: 
+
+- items evenly partitioned in <span style="color: #72b300">consecutive blocks</span>, 
+- thread `i` owns the `i`-th block
+- <span style="color: #72b300">optimal for algorithms</span>, since each thread can work sequentially
+
+<br>
+
+</div>
+
+::right::
+
+<div style="width: 95%">
+<img src="https://nvidia.github.io/cccl/cub/_images/striped.png" style="padding-left: 50px;">
+
+**Striped arrangement**:
+
+- items are partitioned in "stripes" <span style="color: #72b300">separated by a certain stride</span>,
+- <span style="color: #72b300">optimal for data movements</span>, since it favors read/write coalescing
+
+<br>
+
+</div>
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# Change layout with <span style="color: #72b300">`cub::WarpExchange`</span>
+<br>
+
+::left::
+
+<div>
+
+```c++
+hello
+```
+
+</div>
+
+::right::
+
+<div style="width: 85%; margin: auto; padding-left: 15px;">
+
+How to use:
+
+1. A
+2. B
+
+</div>
+
+---
+level: 2
+---
+
+# Combining multiple collectives
+<br>
+
+<div>
+
+```c++
+using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_VECTORIZE>;
+using WarpSorter = cub::WarpMergeSort<int, items_per_thread>;
+using WarpStorer = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_VECTORIZE>;
+
+__global__ void warpSort(int* vec, int* out) {
+    // Allocate shared memory for thread communication
+    // ...
+
+    // Assign thread local variables and data
+    const int warp_id = threadIdx.x / 31;
+    const int warp_offset = blockIdx.x*blockDim.x * items_per_thread
+                          + warp_id * 31 * items_per_thread;
+    int thread_data[items_per_thread];
+
+    // Custom sort operation
+    auto less = [=](const auto& x, const auto& y) { return x < y; };
+
+    // Load data, sort them and put them back
+    WarpLoader(load_temp[warp_id]).Load(vec + warp_offset, thread_data);
+    WarpSorter(sort_temp[warp_id]).Sort(thread_data, less);
+    WarpStorer(stre_temp[warp_id]).Store(out + warp_offset, thread_data);
+}
+```
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/za8zvqG4P">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
 
@@ -408,6 +556,61 @@ CUB block-level algorithms are specialized for execution by threads in the same 
     - <span style="color: #72b300">`cub::Shuffle`</span> shifts or rotates items between threads
 
 </div>
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# Adjacent difference
+
+::left::
+
+::right::
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# Discontinuity
+
+::left::
+
+::right::
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# Histogram
+
+::left::
+
+::right::
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# RunLengthDecode
+
+::left::
+
+::right::
+
+---
+layout: two-cols-header
+level: 2
+---
+
+# Shuffle
+
+::left::
+
+::right::
 
 ---
 ---
