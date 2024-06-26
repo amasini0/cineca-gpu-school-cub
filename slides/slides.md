@@ -509,7 +509,7 @@ __global__ void warpExchange(int* vec, int* out1, int* out2) {
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/4ajjPh3MT">
+  <a href="https://godbolt.org/z/MGsT9qvrf">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
