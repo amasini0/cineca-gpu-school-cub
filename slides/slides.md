@@ -303,7 +303,7 @@ level: 2
 
 ::left::
 
-<div>
+<div style="max-width: 450px">
 
 ```c++
 using WarpReducer = cub::WarpReduce<int, threads_per_warp>;
@@ -334,7 +334,7 @@ __global__ void warpReduction(int* vec, int* out) {
 
 :: right::
 
-<div style="width: 85%; margin: auto; padding-left: 15px;">
+<div style="margin: auto; padding-left: 50px">
 
 **Steps for reduction**:
 
@@ -363,7 +363,7 @@ layout: two-cols-header
 
 ::left::
 
-<div>
+<div style="max-width: 450px">
 
 ```c++
 using WarpScanner = cub::WarpScan<int, threads_per_warp>;
@@ -393,7 +393,7 @@ __global__ void warpScan(int* vec, int* out, int* agg) {
 
 ::right::
 
-<div style="width: 85%; margin: auto; padding-left: 15px;">
+<div style="margin: auto; padding-left: 50px;">
 
 **Steps for scan**:
 
@@ -462,68 +462,167 @@ layout: two-cols-header
 level: 2
 ---
 
-# Change layout with <span style="color: #72b300">`cub::WarpExchange`</span>
+# Memory management collectives
 <br>
 
 ::left::
 
-<div>
+<div style="max-width: 450px">
 
 ```c++
-hello
+using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_DIRECT, 
+                                 threads_per_warp>;
+using WarpExchanger = cub::WarpExchange<int, items_per_thread, threads_per_warp>;
+using WarpStorerBL = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_DIRECT, 
+                                    threads_per_warp>;
+using WarpStorerST = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_STRIPED, 
+                                    threads_per_warp>;
+
+__global__ void warpExchange(int* vec, int* out1, int* out2) {
+  // Allocate shared memory for thread communication
+  // ... 
+    
+  int warp_lid = threadIdx.x / threads_per_warp;
+  int warp_gid = blockIdx.x * warps_per_block + warp_lid;
+  int warp_offset = warp_gid * threads_per_warp * items_per_thread;
+  int thread_data[items_per_thread];
+
+  WarpLoader(ld_temp[warp_lid]).Load(vec + warp_offset, thread_data); 
+  WarpExchanger(ex_temp[warp_lid]).BlockedToStriped(thread_data, thread_data);
+  WarpStorerBL(bl_temp[warp_lid]).Store(out1 + warp_offset, thread_data);
+  WarpStorerST(st_temp[warp_lid]).Store(out2 + warp_offset, thread_data);
+}
 ```
 
 </div>
 
 ::right::
 
-<div style="width: 85%; margin: auto; padding-left: 15px;">
+<div style="margin: auto; padding-left: 50px">
 
-How to use:
+**Note**:
 
-1. A
-2. B
+- Load/store algorithms must be specified in template
+- These collectives only allow a power-of-two `threads_per_warp`
+- `.Store(...)` and `.Load(...)` need a pointer to first element of warp
 
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/4ajjPh3MT">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
 </div>
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# Combining multiple collectives
+# Exercise: Warp Sort
 <br>
 
-<div>
+Try to use the warp collective `WarpMergeSort` to sort values inside a warp.
+
+:: left::
+
+<div style="max-width: 450px">
 
 ```c++
-using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_VECTORIZE>;
-using WarpSorter = cub::WarpMergeSort<int, items_per_thread>;
-using WarpStorer = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_VECTORIZE>;
+// TODO
+// 1. Specialize templates
 
 __global__ void warpSort(int* vec, int* out) {
-    // Allocate shared memory for thread communication
-    // ...
+  // Custom sort operation
+  auto less = [=](const auto& x, const auto& y) { return x < y; };
 
-    // Assign thread local variables and data
-    const int warp_id = threadIdx.x / 31;
-    const int warp_offset = blockIdx.x*blockDim.x * items_per_thread
-                          + warp_id * 31 * items_per_thread;
-    int thread_data[items_per_thread];
+  // Array for thread-local items
+  int thread_data[items_per_thread];  
 
-    // Custom sort operation
-    auto less = [=](const auto& x, const auto& y) { return x < y; };
+  // TODO
+  // 2. Allocate shared memory for thread communication
+  // 3. Set required indices and variables
+  // 4. Load thread local data
+  // 5. Sort thread local data
+  // 6. Write sorted data to output array
+}
+```
 
-    // Load data, sort them and put them back
-    WarpLoader(load_temp[warp_id]).Load(vec + warp_offset, thread_data);
-    WarpSorter(sort_temp[warp_id]).Sort(thread_data, less);
-    WarpStorer(stre_temp[warp_id]).Store(out + warp_offset, thread_data);
+<br>
+
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+**Steps**:
+
+1. Start from the provided template (click on the icon in bottom right corner)
+2. Fill the device function in the template. Initially it is like the on the left.
+3. If the code is correct, the output values should be sorted.
+
+Check the page for `WarpMergeSort` [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html).
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/q3TWx3acs">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
+
+---
+level: 2
+layout: two-cols-header
+---
+# Solution: Warp Sort
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+
+```c++
+using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_VECTORIZE, threads_per_warp>;
+using WarpSorter = cub::WarpMergeSort<int, items_per_thread, threads_per_warp>; 
+using WarpStorer = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_VECTORIZE, threads_per_warp>;
+
+__global__ void warpSort(int* vec, int* out) {
+  auto less = [=](const auto& x, const auto& y) { return x < y; };
+  int thread_data[items_per_thread];
+
+  // Allocate shared memory for thread communication
+  // ...
+
+  // Assign thread local variables and data
+  const int warp_lid = threadIdx.x / threads_per_warp;
+  const int warp_gid = blockIdx.x * warps_per_block + warp_lid;
+  const int warp_offset = warp_gid * threads_per_warp * items_per_thread;
+    
+  // Load data, sort them and put them back
+  WarpLoader(load_temp[warp_lid]).Load(vec + warp_offset, thread_data);
+  WarpSorter(sort_temp[warp_lid]).Sort(thread_data, less);
+  WarpStorer(stre_temp[warp_lid]).Store(out + warp_offset, thread_data);
 }
 ```
 
 </div>
 
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+**Note**:
+
+- This only works for a power-of-two `threads_per_warp`.
+- We use `cub::WARP_LOAD_VECTORIZED` to load blocks of items faster, 
+- and analogously for storing sorted blocks.
+
+</div>
+
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/za8zvqG4P">
+  <a href="https://godbolt.org/z/oajb8r1Mf">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
