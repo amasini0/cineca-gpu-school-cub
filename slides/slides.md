@@ -116,9 +116,9 @@ layout: two-cols-header
 <br>
 
 Parallel algorithms library:
-- high-level interface
-- portability between CPU and GPU
-- compatibility with CUDA, TBB, OpenMP
+- High-level interface
+- Portability between CPU and GPU
+- Compatibility with CUDA, TBB, OpenMP
 </div>
 
 ::right::
@@ -130,7 +130,7 @@ Parallel algorithms library:
 
 CUDA C++ Standard Library:
 - C++ SL implementation for host and device
-- abstractions for CUDA-specific hardware features
+- Abstractions for CUDA-specific hardware features
 
 </div>
 
@@ -151,14 +151,14 @@ layout: two-cols-header
 Collective primitives for each level of the CUDA threading model:
 
 1. <span style="color: #72b300"> **Warp-level primitives** </span>
-    - prefix scan, reduction, sort
-    - safely specialized for each CUDA architecture
+    - Reduction, scan, sort, memory collectives
+    - Safely specialized for each CUDA architecture
 2. <span style="color: #72b300"> **Block-level primitives** </span> 
-    - histogram, adjacent difference, shuffling
-    - compatible with arbitrary thread block sizes
+    - Same as warp-level, and more
+    - Compatible with arbitrary thread block sizes
 3. <span style="color: #72b300"> **Device-level primitives** </span>
-    - parallel operations, batched algorithms
-    - compatible with CUDA dynamic parallelism
+    - Parallel operations, and batched algorithms
+    - Compatible with CUDA dynamic parallelism
 
 <br>
 </div>
@@ -204,7 +204,7 @@ level: 2
 
 A few benefits of using CUB in your kernels:
 
-- <span style="color: #72b300">**Simplicity of composition**:</span> complex parallel operations can be easily sequenced and nested.
+- <span style="color: #72b300">**Simplicity of composition**:</span> complex parallel operations can be easily sequenced and nested
 
 - <span style="color: #72b300">**High performance**:</span> CUB algorithms are state-of-the-art
 
@@ -225,7 +225,7 @@ level: 2
 
 <div style="width: 90%">
 
-CUB is part of CCCL, which is <span style="color: #72b300;">included in the CUDA Toolkit</span> (so you already have it). The rest depends on the compiler you want to use:
+CUB is part of CCCL, which is <span style="color: #72b300;">included in the CUDA Toolkit</span> (so you already have it). The rest depends on the compiler you wish to use:
 
 - When using `nvcc` the relevant header paths are automatically added during compilation, you only need to `#include <cub/cub.h>`
 
@@ -233,7 +233,7 @@ CUB is part of CCCL, which is <span style="color: #72b300;">included in the CUDA
 
 <br>
 
-If the CCCL version in the toolkit is a bit old you can always <span style="color: #72b300;">get the latest version from GitHub</span> and use it directly like so (see compatibility table [here](https://github.com/NVIDIA/cccl?tab=readme-ov-file#cuda-toolkit-ctk-compatibility))
+If the CCCL version in the toolkit is a bit old you can always <span style="color: #72b300;">get the latest version from GitHub</span> and use it directly (see compatibility table [here](https://github.com/NVIDIA/cccl?tab=readme-ov-file#cuda-toolkit-ctk-compatibility)):
 
 ```shell
 git clone https://github.com/NVIDIA/cccl.gitsh
@@ -278,7 +278,7 @@ Invoking any CUB algorithm follows the same general pattern:
 
 <div style="width: 90%;"> 
 
-CUB warp-level algorithms are specialized for execution by threads in the same CUDA warp.
+CUB provides six algorithms specialized for execution by threads in the same CUDA warp:
 
 - <span style="color: #72b300">`cub::WarpExchange`</span> rearranges data partitioned across a warp
 - <span style="color: #72b300">`cub::WarpLoad`</span> loads a linear segment of items from memory into a warp
@@ -338,10 +338,10 @@ __global__ void warpReduction(int* vec, int* out) {
 
 **Steps for reduction**:
 
-1. specialize template with data type and logical warp size (max 32),
-2. allocate block shared memory for thread communication,
-3. initialize `warpReducer` object passing current warp shared memory slot, 
-4. reduce to `lane0` using one reduction function.
+1. specialize template with data type and logical warp size (max 32)
+2. allocate block shared memory for thread communication
+3. initialize `warpReducer` object passing current warp shared memory slot
+4. reduce to `lane0` using one reduction function
 
 All available reductions are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpReduce.html).
 
@@ -397,10 +397,10 @@ __global__ void warpScan(int* vec, int* out, int* agg) {
 
 **Steps for scan**:
 
-1. specialize template with data type and logical warp size (max 32),
-2. allocate block shared memory for in-warp thread communication,
-3. initialize `WarpScanner` object passing current warp shared memory slot,
-4. call `.InclusiveScan(...)` or one its variants.
+1. Specialize template with data type and logical warp size (max 32)
+2. Allocate block shared memory for in-warp thread communication
+3. Initialize `WarpScanner` object passing current warp shared memory slot
+4. Call `.InclusiveScan(...)` or one its variants
 
 All available variants are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpScan.html).
 
@@ -420,10 +420,10 @@ level:2
 # Memory arrangements
 <br>
 
-<div style="width: 92%">
-Many CUDA kernels have performance benefits if we let each thread process more than one datum. However, these benifits strongly depends on how our data are arranged in memory.
+<div>
+Many CUDA kernels have performance benefits if we let each thread process more than one datum, however these benifits strongly depends on how our data are arranged in memory.
 
-CUB primitives allow us to efficiently manipulate data arranged in two specific formats.
+CUB primitives allow us to efficiently manipulate data arranged in two specific formats:
 <br>
 
 </div>
@@ -435,9 +435,9 @@ CUB primitives allow us to efficiently manipulate data arranged in two specific 
 
 **Blocked arrangement**: 
 
-- items evenly partitioned in <span style="color: #72b300">consecutive blocks</span>, 
-- thread `i` owns the `i`-th block
-- <span style="color: #72b300">optimal for algorithms</span>, since each thread can work sequentially
+- Items evenly partitioned in <span style="color: #72b300">consecutive blocks</span>
+- Thread `i` owns the `i`-th block
+- <span style="color: #72b300">Optimal for algorithms</span>, since each thread can work sequentially
 
 <br>
 
@@ -450,8 +450,8 @@ CUB primitives allow us to efficiently manipulate data arranged in two specific 
 
 **Striped arrangement**:
 
-- items are partitioned in "stripes" <span style="color: #72b300">separated by a certain stride</span>,
-- <span style="color: #72b300">optimal for data movements</span>, since it favors read/write coalescing
+- Items are partitioned in "stripes" <span style="color: #72b300">separated by a certain stride</span>
+- <span style="color: #72b300">Optimal for data movements</span>, since it favors read/write coalescing
 
 <br>
 
@@ -470,23 +470,22 @@ level: 2
 <div style="max-width: 450px">
 
 ```c++
-using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_DIRECT, 
-                                 threads_per_warp>;
+using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_DIRECT, threads_per_warp>;
 using WarpExchanger = cub::WarpExchange<int, items_per_thread, threads_per_warp>;
-using WarpStorerBL = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_DIRECT, 
-                                    threads_per_warp>;
-using WarpStorerST = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_STRIPED, 
-                                    threads_per_warp>;
+using WarpStorerBL = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_DIRECT, threads_per_warp>;
+using WarpStorerST = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_STRIPED, threads_per_warp>;
 
 __global__ void warpExchange(int* vec, int* out1, int* out2) {
   // Allocate shared memory for thread communication
   // ... 
-    
+  
+  // Assign thread-local variables and data
   int warp_lid = threadIdx.x / threads_per_warp;
   int warp_gid = blockIdx.x * warps_per_block + warp_lid;
   int warp_offset = warp_gid * threads_per_warp * items_per_thread;
   int thread_data[items_per_thread];
 
+  // Load blocked, exchange, store blocked and striped
   WarpLoader(ld_temp[warp_lid]).Load(vec + warp_offset, thread_data); 
   WarpExchanger(ex_temp[warp_lid]).BlockedToStriped(thread_data, thread_data);
   WarpStorerBL(bl_temp[warp_lid]).Store(out1 + warp_offset, thread_data);
@@ -502,9 +501,10 @@ __global__ void warpExchange(int* vec, int* out1, int* out2) {
 
 **Note**:
 
-- Load/store algorithms must be specified in template
-- These collectives only allow a power-of-two `threads_per_warp`
-- `.Store(...)` and `.Load(...)` need a pointer to first element of warp
+- Load/store algorithms must be specified in the class template.
+- Exchange algorithm defaults to `cub::WARP_EXCHANGE_SHMEM`.
+- All these collectives only allow a power-of-two `threads_per_warp`.
+- `.Store(...)` and `.Load(...)` take a pointer to the first element of the warp as first argument.
 
 </div>
 
@@ -559,8 +559,8 @@ __global__ void warpSort(int* vec, int* out) {
 **Steps**:
 
 1. Start from the provided template (click on the icon in bottom right corner)
-2. Fill the device function in the template. Initially it is like the on the left.
-3. If the code is correct, the output values should be sorted.
+2. Fill the device function in the template. Initially it is like the on the left
+3. If the code is correct, the output values should be sorted
 
 Check the page for `WarpMergeSort` [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html).
 
@@ -615,9 +615,10 @@ __global__ void warpSort(int* vec, int* out) {
 
 **Note**:
 
-- This only works for a power-of-two `threads_per_warp`.
-- We use `cub::WARP_LOAD_VECTORIZED` to load blocks of items faster, 
-- and analogously for storing sorted blocks.
+- Only works with a power-of-two `threads_per_warp` value
+- Uses `cub::WARP_LOAD_VECTORIZED` to load thread-local items faster
+- Same thing for storing the sorted items
+- Vectorized algorithms work with data in blocked format
 
 </div>
 
@@ -634,8 +635,6 @@ __global__ void warpSort(int* vec, int* out) {
 <br>
 
 <div style="width: 92%;">
-
-CUB block-level algorithms are specialized for execution by threads in the same CUDA block.
 
 - Block-level variants for all warp-level algorithms:
 
@@ -657,59 +656,175 @@ CUB block-level algorithms are specialized for execution by threads in the same 
 </div>
 
 ---
-layout: two-cols-header
 level: 2
+layout: two-cols-header
 ---
 
-# Adjacent difference
+# Adj. Diff. with <span style="color: #72b300">`cub::BlockAdjacentDifference`</span>
+<br>
 
 ::left::
 
+<div style="max-width: 450px">
+
+```c++
+using BlockAdjDiffer = cub::BlockAdjacentDifference<int, block_dim_x, block_dim_y>; 
+using BlockLoader = cub::BlockLoad<int, block_dim_x, items_per_thread, cub::BLOCK_LOAD_VECTORIZE, block_dim_y>;
+using BlockStorer = cub::BlockStore<int, block_dim_x, items_per_thread, cub::BLOCK_STORE_VECTORIZE, block_dim_y>;
+
+__global__ void blockAdjDiff(int* vec, int* out1, int* out2) {
+  // Allocate shared memory for thread communication
+  __shared__ BlockAdjDiffer::TempStorage temp; // <- not an array
+  // ... 
+
+  // Assign thread local variables and data
+  auto op = [=](auto& x, auto& y){ return x - y; };
+  int block_offset = blockIdx.x * blockDim.x * blockDim.y * items_per_thread;
+  int thread_data[items_per_thread];
+  int diff_result[items_per_thread];
+
+  BlockLoader(ld_temp).Load(vec + block_offset , thread_data);
+  BlockAdjDiffer(temp).SubtractLeft(thread_data, diff_result, op);
+  BlockStorer(st_temp).Store(out1 + block_offset, result_left);
+  __syncthreads() // this may be required when reusing temp storage
+  BlockAdjDiffer(temp).SubtractRight(thread_data, diff_result, op);
+  BlockStorer(st_temp).Store(out2 + block_offset, diff_result);
+}
+```
+
+</div>
+
 ::right::
 
+<div style="margin: auto; padding-left: 50px">
+
+**Steps**:
+
+1. Specialize templates passing `x,y,z` block dimensions (default is `1`)
+2. Load/store require `items_per_thread` and algorithm after block dimension `x`
+3. Allocate required temporary storage (note: not an array anymore!)
+4. Call `.SubtractLeft` or `.SubtractRight`
+5. Synchronization may be required when reusing temp storage
+
+More info on the [manual page](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockAdjacentDifference.html). 
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/h7KrzdznT">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
+
 ---
-layout: two-cols-header
 level: 2
+layout: two-cols-header
 ---
 
-# Discontinuity
+# Histogram with <span style="color: #72b300">`cub::BlockHistogram`</span>
+<br>
 
 ::left::
 
+<div style="max-width: 450px">
+
+```c++
+using BlockHistT = cub::BlockHistogram<int, block_dim_x, items_per_thread, bins, cub::BLOCK_HISTO_ATOMIC, block_dim_y>; 
+
+__global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
+  // - Allocate shared memory for thread communication
+  // - Assign thread-local variables and data
+  // ...
+
+  // Allocate shared memory for bin counts
+  __shared__ unsigned bin_counts1[bins];
+  __shared__ unsigned bin_counts2[bins];
+
+  // Init histogram, then composite data from threads
+  BlockHistT(hi_temp).InitHistogram(bin_counts1);
+  BlockHistT(hi_temp).Composite(thread_data, bin_counts1);
+
+  // Shortcut init + compositing, then keep compositing
+  BlockHistT(hi_temp).Histogram(thread_data, bin_counts2);
+  BlockHistT(hi_temp).Composite(thread_data, bin_counts2);
+}
+```
+
+</div>
+
 ::right::
 
+<div style="margin: auto; padding-left: 50px">
+
+**Steps**:
+
+1. Specialize template and allocate required shared memory (as usual)
+3. Allocate more shared memory for aggrgating bin counts
+4. Create histogram with `.InitHistogram` + `.Composite`, or just using `.Histogram`
+5. Values passed to histogram must be in range `0 <= val < num_bins`
+
+More details can be found [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockHistogram.html).
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/67fTE6nKr">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
+
 ---
-layout: two-cols-header
 level: 2
+layout: two-cols-header
 ---
 
-# Histogram
+# Shuffling Items with <span style="color: #72b300">`cub::BlockShuffle`</span>
+<br>
 
 ::left::
 
+<div style="max-width: 450px">
+</div>
+
 ::right::
 
+<div style="margin: auto, padding-left: 50px">
+</div>
+
 ---
-layout: two-cols-header
 level: 2
+layout: two-cols-header
 ---
 
-# RunLengthDecode
+# Exercise: Run-Lenght Encoding/Decoding
+<br>
 
 ::left::
 
+<div style="max-width: 450px">
+</div>
+
 ::right::
 
+<div style="margin: auto, padding-left: 50px">
+</div>
+
 ---
-layout: two-cols-header
 level: 2
+layout: two-cols-header
 ---
 
-# Shuffle
+# Solution: Run-Lenght Encoding/Decoding
+<br>
 
 ::left::
 
+<div style="max-width: 450px">
+</div>
+
 ::right::
+
+<div style="margin: auto, padding-left: 50px">
+</div>
 
 ---
 ---
@@ -718,8 +833,6 @@ level: 2
 <br>
 
 <div style="width: 90%">
-
-CUB device-level single-problem parallel algorithms:
 
 - Device-level variants of some block-level algorithms: 
 
@@ -737,6 +850,18 @@ CUB device-level single-problem parallel algorithms:
     - <span style="color: #72b300">`cub::DeviceSelect`</span> compacts data residing within device-accessible memory
 
 </div>
+
+---
+level: 2
+---
+
+# Device For
+
+---
+level: 2
+---
+
+# DevicePartition
 
 ---
 ---
@@ -759,6 +884,23 @@ CUB device-level segmented-problem (batched) parallel algorithms:
 **Note**: as for non-batched algorithms, data must be within device-accessible memory.
 </div>
 
+---
+level: 2
+---
+
+# DeviceSegmentedReduce
+
+---
+level: 2
+---
+
+# Exercise: Device For again
+
+---
+level: 2
+---
+
+# Solution: Device For again
 
 ---
 ---
