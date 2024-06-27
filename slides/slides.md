@@ -759,9 +759,9 @@ __global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
 **Steps**:
 
 1. Specialize template and allocate required shared memory (as usual)
-3. Allocate more shared memory for aggrgating bin counts
+3. Allocate more shared memory for bin counts aggregation
 4. Create histogram with `.InitHistogram` + `.Composite`, or just using `.Histogram`
-5. Values passed to histogram must be in range `0 <= val < num_bins`
+5. Values passed to histogram must be in range `[0, bins)`
 
 More details can be found [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockHistogram.html).
 </div>
