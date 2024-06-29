@@ -698,7 +698,7 @@ __global__ void blockAdjDiff(int* vec, int* out1, int* out2) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps**:
+**Steps for adj. diff. computation**:
 
 1. Specialize templates passing `x,y,z` block dimensions (default is `1`)
 2. Load/store require `items_per_thread` and algorithm after block dimension `x`
@@ -733,7 +733,7 @@ using BlockHistT = cub::BlockHistogram<int, block_dim_x, items_per_thread, bins,
 
 __global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
   // - Allocate shared memory for thread communication
-  // - Assign thread-local variables and data
+  // - Load thread-local data
   // ...
 
   // Allocate shared memory for bin counts
@@ -747,6 +747,9 @@ __global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
   // Shortcut init + compositing, then keep compositing
   BlockHistT(hi_temp).Histogram(thread_data, bin_counts2);
   BlockHistT(hi_temp).Composite(thread_data, bin_counts2);
+
+  // Store results
+  // ...
 }
 ```
 
@@ -756,7 +759,7 @@ __global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps**:
+**Steps for histogram**:
 
 1. Specialize template and allocate required shared memory (as usual)
 3. Allocate more shared memory for bin counts aggregation
@@ -783,11 +786,54 @@ layout: two-cols-header
 ::left::
 
 <div style="max-width: 450px">
+
+```c++
+using BlockShuffleT = cub::BlockShuffle<int, block_dim_x, block_dim_y>; 
+
+__global__ void blockShuffle(int* vec, int* out1, int* out2) {
+  // - Allocate shared memory for thread communication
+  // - Load thread-local data
+  // ...
+
+  // Data to be shuffled
+  int shuf_item = thread_data[0]; // First element of each thread
+  int shuf_block[items_per_thread];
+    
+  // Shuffle a single value (Offset, Rotate)
+  BlockShuffleT(shuf_temp).Offset(shuf_item, shuf_item, 2);
+  __syncthreads(); // This is required to get correct results
+
+  // Shuffle an entire block of items (Up/Down)
+  shuf_block[0] = 111; // This is left unchanged by .Up(...) 
+  BlockShuffleT(shuf_temp).Up(thread_data, shuf_block);
+
+  // Store results 
+  // ...
+}
+```
 </div>
 
 ::right::
 
-<div style="margin: auto, padding-left: 50px">
+<div style="margin: auto; padding-left: 50px">
+
+**Steps for shuffling**:
+
+1. Specialize template (nothing fancy here)
+2. Allocate shared memory for tread communication
+3. Use the appropriate operation:
+    - `.Offset`/`.Rotate` for single items
+    - `.Up`/`.Down` for blocks of items
+4. Pay attention to synchronization errors and first/last elements 
+
+For more details click [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockShuffle.html#_CPPv4I0_i_i_i_iEN3cub12BlockShuffleE).
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/a51hn1Eej">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
 </div>
 
 ---
