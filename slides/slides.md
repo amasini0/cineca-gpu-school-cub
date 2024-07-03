@@ -872,6 +872,12 @@ layout: two-cols-header
 <div style="margin: auto, padding-left: 50px">
 </div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/5qfqMEaMT">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
+
 ---
 ---
 
