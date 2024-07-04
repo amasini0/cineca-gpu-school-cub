@@ -976,15 +976,82 @@ __global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) 
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# Device For
+# Generic Operations with <span style="color: #72b300">`cub::DeviceFor`</span>
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+</div>
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# DevicePartition
+# Partitioning with <span style="color: #72b300">`cub::DevicePartition`</span>
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+
+```c++
+// Define input items and partitioning flags
+// Allocate and populate device memory locations
+// ...
+
+//Get memory requirements for algorithm
+void *p_temp_storage_1 = nullptr;
+size_t temp_storage_1_bytes = 0; // This must be size_t
+cub::DevicePartition::Flagged(
+  p_temp_storage_1, temp_storage_1_bytes,
+  d_items, d_flags, d_out1, d_num_selected_1, num_items);
+
+// Allocate required temporary storage
+cudaMalloc(&p_temp_storage_1, temp_storage_1_bytes);
+
+// Run selection
+cub::DevicePartition::Flagged(
+  p_temp_storage_1, temp_storage_1_bytes,
+  d_items, d_flags, d_out1, d_num_selected_1, num_items);
+
+// ...
+```
+
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+**Steps for partitioning**:
+
+1. Define flags/filter to determine selected elements
+2. Allocate and populate required memory locations
+3. Call algorithm a first time to get required temporary storage size (in bytes)
+4. Allocate temporary storage
+5. Call algorithm again to get results
+
+Check all available partition algorithms [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DevicePartition.html).
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/8rojcb9s8">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
 
 ---
 ---
@@ -1009,21 +1076,98 @@ CUB device-level segmented-problem (batched) parallel algorithms:
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# DeviceSegmentedReduce
+# Reductions with <span style="color: #72b300">`cub::DeviceSegmentedReduce`</span>
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+
+```c++
+// Define num segments and their offsets
+// Allocate and populate device memory locations
+// ...
+
+// Determine temporary device storage requirements
+void* p_temp_storage_sum = nullptr;
+size_t temp_storage_sum_bytes = 0;
+cub::DeviceSegmentedReduce::Sum(
+  p_temp_storage_sum, temp_storage_sum_bytes, 
+  d_items, d_sums, num_segments, d_offsets, d_offsets + 1);
+
+// Allocate required temporary storage
+cudaMalloc(&p_temp_storage_sum, temp_storage_sum_bytes);
+
+// Perform the reduction
+cub::DeviceSegmentedReduce::Sum(
+  p_temp_storage_sum, temp_storage_sum_bytes, 
+  d_items, d_sums, num_segments, d_offsets, d_offsets + 1);
+
+// ...
+```
+
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+**Steps for segmented algorithm**:
+
+1. Define the number of segments
+2. Define begin and end offsets for each segment
+3. Call the algorithm a first time to get required temporary storage size (in bytes)
+4. Allocate temporary storage
+5. Call algorithm again to get results
+
+Check available reductions [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSegmentedReduce.html).
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/vjo5T86sn">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
+</div>
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# Exercise: Device For again
+# Exercise: Item Selection
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+</div>
 
 ---
 level: 2
+layout: two-cols-header
 ---
 
-# Solution: Device For again
+# Solution: Item Selection
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+</div>
 
 ---
 ---
