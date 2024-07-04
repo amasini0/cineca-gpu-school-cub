@@ -556,10 +556,10 @@ __global__ void warpSort(int* vec, int* out) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps**:
+**Exercise guide**:
 
-1. Start from the provided template (click on the icon in bottom right corner)
-2. Fill the device function in the template. Initially it is like the on the left
+1. Start from the provided template (click on the icon in the bottom right corner)
+2. Fill the device function in the template, initially it is like the one on the left
 3. If the code is correct, the output values should be sorted
 
 Check the page for `WarpMergeSort` [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html).
@@ -841,17 +841,54 @@ level: 2
 layout: two-cols-header
 ---
 
-# Exercise: Run-Lenght Encoding/Decoding
+# Exercise: Run-Lenght Decoding
 <br>
+
+Use `cub::BlockRunLengthDecode` to decode a run-length encoded sequence of numbers.
 
 ::left::
 
 <div style="max-width: 450px">
+
+```c++
+// TODO:
+// 1 - Specialize required templates 
+
+__global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) {
+    // TODO:
+    // 2 - Initialize temp storage and declare thread-local arrays
+    // 3 - Load data (runs_per_thread values and lengths for each thread)
+    // 4 - Initialize decoder
+    // 5 - Decode window of elements
+    // 6 - Store decoded elements in appropriate output location
+}
+
+// HINTS (for one possible solution):
+// 1 - Not all threads should receive proper data, some may have zero-filled arrays
+// 2 - The number of decoded items per block, is known (check allocations)
+// 3 - You may want to leave the template specializations as they are
+// 4 - You can decode all items with a single call to RunLengthDecode
+```
+
 </div>
 
 ::right::
 
-<div style="margin: auto, padding-left: 50px">
+<div style="margin: auto; padding-left: 50px">
+
+**Exercise guide**:
+
+1. Start from the provided template (click on the icon in the bottom right corner)
+2. Fill the device function in the template, initially it is like the one on the left
+3. At the end of output there is a message saying if decode was successful or not
+
+`BlockRunLengthDecode` docs are [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockRunLengthDecode.html#_CPPv4I0_i_i_i0_i_iEN3cub20BlockRunLengthDecodeE). 
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/xredjhdfo">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
 </div>
 
 ---
@@ -859,21 +896,55 @@ level: 2
 layout: two-cols-header
 ---
 
-# Solution: Run-Lenght Encoding/Decoding
+# Solution: Run-Lenght Decoding
 <br>
 
 ::left::
 
 <div style="max-width: 450px">
+
+```c++
+__global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) {
+    // ...
+    int thread_values[runs_per_thread] = { 0 }; // init to zero, this is required
+    int thread_lengths[runs_per_thread] = { 0 }; // init to zero, this is required
+    
+    int global_run_offset = (blockIdx.x != 0) ? sizes[blockIdx.x - 1] : 0;
+    int block_run_offset = threadIdx.x * runs_per_thread;
+    int block_runs = sizes[blockIdx.x];
+    for (int thread_run = 0; thread_run < runs_per_thread; ++thread_run) {
+        int block_run = block_run_offset + thread_run;
+        int global_run = global_run_offset + block_run;
+        if (block_run < block_runs) {
+            thread_values[i] = values[global_run];
+            thread_lengths[i] = lengths[global_run];  
+        }
+    }
+
+    int decoded_items[items_per_thread], total_decoded_size = 0;
+    DecodeT decoder(dc_temp, thread_values, thread_lengths, total_decoded_size);
+    decoder.RunLengthDecode(decoded_items, /* offset */ 0);
+    // ...
+}
+```
+
 </div>
 
 ::right::
 
-<div style="margin: auto, padding-left: 50px">
+<div style="margin: auto; padding-left: 50px">
+
+**Note**:
+
+- Thread-local run values and lengths are initialized to zero
+- Not all threads receive proper data (some will have zero-filled arrays)
+- All items are decoded in a single pass 
+- Check the full version of the solution for more comments
+
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/5qfqMEaMT">
+  <a href="https://godbolt.org/z/Kd99Kqdxs">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
