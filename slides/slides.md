@@ -522,7 +522,7 @@ layout: two-cols-header
 # Exercise: Warp Sort
 <br>
 
-Try to use the warp collective `WarpMergeSort` to sort values inside a warp.
+Try to use the warp collective <span style="color: #72b300">`cub::WarpMergeSort`</span> to sort values inside a warp.
 
 :: left::
 
@@ -844,7 +844,7 @@ layout: two-cols-header
 # Exercise: Run-Lenght Decoding
 <br>
 
-Use `cub::BlockRunLengthDecode` to decode a run-length encoded sequence of numbers.
+Try to use <span style="color: #72b300">`cub::BlockRunLengthDecode`</span> to decode a run-length encoded sequence of numbers.
 
 ::left::
 
@@ -1128,7 +1128,7 @@ Check available reductions [here](https://nvidia.github.io/cccl/cub/api/structcu
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/vjo5T86sn">
+  <a href="https://godbolt.org/z/q6Gr1csWc">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
@@ -1138,17 +1138,56 @@ level: 2
 layout: two-cols-header
 ---
 
-# Exercise: Item Selection
+# Exercise: Filtering Sequences of Data
 <br>
+
+Try to filter elements in a sequence using <span style="color: #72b300">`cub::DeviceSelect`</span>.
 
 ::left::
 
 <div style="max-width: 450px">
+
+```c++
+// ...
+// Allocate pointer to store number of not selected elements
+void *p_num_selected;
+cudaMalloc(&p_num_selected, sizeof(int));
+int* d_num_selected = static_cast<int*>(p_num_selected);
+
+// YOUR CODE HERE --------------------------------------- //
+
+// TODO:
+// 1 - Get memory requirements
+// 2 - Allocate temp storage
+// 3 - Run selection
+
+// ------------------------------------------------------ //
+
+// Copy number of uniques back to host
+int num_selected = 0;
+cudaMemcpy(&num_selected, d_num_selected, sizeof(int), cudaMemcpyDeviceToHost);
+// ...
+```
+
 </div>
 
 ::right::
 
 <div style="margin: auto; padding-left: 50px">
+
+**Exercise guide**:
+
+1. Start from the provided template (click on the icon in the bottom right corner)
+2. Fill the code required in the template, initially it is like the one on the left
+3. Check the output to see if the selected elements are correct
+
+More info on `cub::DeviceSelect` [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSelect.html).
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/cvfdj5vzc">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
 </div>
 
 ---
@@ -1156,17 +1195,52 @@ level: 2
 layout: two-cols-header
 ---
 
-# Solution: Item Selection
+# Solution: Filtering Sequences of Data
 <br>
 
 ::left::
 
 <div style="max-width: 450px">
+
+```c++
+// Allocate int to store number of not selected elements
+void *p_num_selected;
+cudaMalloc(&p_num_selected, sizeof(int));
+int* d_num_selected = static_cast<int*>(p_num_selected);
+
+// Determine temporary storage requirements
+void *p_temp_storage = nullptr;
+size_t temp_storage_bytes = 0;
+cub::DeviceSelect::If(
+  p_temp_storage, temp_storage_bytes,
+  d_items, d_uniqs, d_num_selected, num_items, LessThan(threshold));
+
+// Allocate temporary storage
+cudaMalloc(&p_temp_storage, temp_storage_bytes);
+
+// Run selection
+cub::DeviceSelect::If(
+  p_temp_storage, temp_storage_bytes,
+  d_items, d_uniqs, d_num_selected, num_items, LessThan(threshold));
+```
+
 </div>
 
 ::right::
 
 <div style="margin: auto; padding-left: 50px">
+
+**Note**:
+
+- Same as `cub::DevicePartition`
+- Only `num_selected` items are written in output in this case (not entire sequence)
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
+  <a href="https://godbolt.org/z/xhnv7eM6h">
+    <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
+  </a>
 </div>
 
 ---
