@@ -979,26 +979,6 @@ level: 2
 layout: two-cols-header
 ---
 
-# Generic Operations with <span style="color: #72b300">`cub::DeviceFor`</span>
-<br>
-
-::left::
-
-<div style="max-width: 450px">
-
-</div>
-
-::right::
-
-<div style="margin: auto; padding-left: 50px">
-
-</div>
-
----
-level: 2
-layout: two-cols-header
----
-
 # Partitioning with <span style="color: #72b300">`cub::DevicePartition`</span>
 <br>
 
@@ -1051,6 +1031,62 @@ Check all available partition algorithms [here](https://nvidia.github.io/cccl/cu
   <a href="https://godbolt.org/z/8rojcb9s8">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
+</div>
+
+---
+level: 2
+layout: two-cols-header
+---
+
+# Generic Operations with <span style="color: #72b300">`cub::DeviceFor`</span>
+<br>
+
+::left::
+
+<div style="max-width: 450px">
+
+```c++
+struct SquareAndAdd {
+  int val;
+
+  CUB_RUNTIME_FUNCTION 
+  explicit SquareAndAdd(int x) : val{x} {} 
+
+  __device__ void operator() (int& x) { x*=x; x+=val; }
+};
+```
+
+<br>
+
+```c++
+int main() {
+  //...
+  // Copy input data on device
+
+  // Update input array in place
+  cub::DeviceFor::ForEachN(d_numbers, size, SquareAndAdd(10));
+
+  // Copy updated data back to host
+  // ...
+}
+```
+
+</div>
+
+::right::
+
+<div style="margin: auto; padding-left: 50px">
+
+**Steps**: 
+1. Check [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceFor.html#_CPPv4N3cub9DeviceForE) the requirements for the selected `DeviceFor` variant
+2. Set up required device storage locations
+3. Call the algorithm to get results
+
+**Note**: 
+
+- func. obj. used on device must have a `__device__` call operator
+- non-default constructor must be declared `CUB_RUNTIME_FUNCTION` and `explicit`
+
 </div>
 
 ---
