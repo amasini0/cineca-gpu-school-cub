@@ -886,7 +886,7 @@ __global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) 
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/xredjhdfo">
+  <a href="https://godbolt.org/z/WMvP7scPa">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
@@ -944,7 +944,7 @@ __global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) 
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/Kd99Kqdxs">
+  <a href="https://godbolt.org/z/Pss9aW4T3">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
@@ -1185,7 +1185,7 @@ More info on `cub::DeviceSelect` [here](https://nvidia.github.io/cccl/cub/api/st
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/cvfdj5vzc">
+  <a href="https://godbolt.org/z/x7esEer6e">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>
@@ -1238,7 +1238,7 @@ cub::DeviceSelect::If(
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
-  <a href="https://godbolt.org/z/xhnv7eM6h">
+  <a href="https://godbolt.org/z/7jMbfqWbE">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/godbolt_logo_icon_168158.png" width="100%">
   </a>
 </div>

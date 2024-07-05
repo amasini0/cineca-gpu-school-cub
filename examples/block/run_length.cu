@@ -6,7 +6,7 @@
 #include <cub/cub.cuh>
 #include <cub/block/block_run_length_decode.cuh>
 
-constexpr int num_blocks = 1;
+constexpr int num_blocks = 2;
 constexpr int block_dim = 32;
 constexpr int items_per_thread = 4;
 constexpr int runs_per_thread = items_per_thread; // must be same as items_per_thread
@@ -22,31 +22,42 @@ __global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) 
     int thread_values[runs_per_thread] = { 0 }; // init to zero
     int thread_lengths[runs_per_thread] = { 0 }; // init to zero
 
-    // Load data (if more than size, then set to zeros)
-    int offset = 0;
-    if (blockIdx.x != 0) offset = sizes[blockIdx.x - 1];
+    // Load data from values and lengths inside thread-local arrays
+    // Since we (probably) have more threads than required, due to the fact that
+    // a thread handles more than one run, we will give the extra threads zero-filled
+    // arrays (both for values and lengths, but the most important is lengths), so
+    // that they will not influence the decoding
+    int block_run_offset = (blockIdx.x != 0) ? sizes[blockIdx.x-1] : 0;
     int block_runs = sizes[blockIdx.x];
-    int block_run_offset = threadIdx.x * runs_per_thread;
-
+    int thread_run_offset = threadIdx.x * runs_per_thread;
+    
     for (int i = 0; i < runs_per_thread; ++i) {
-        int block_run_idx = block_run_offset + i;
-        int global_run_idx = offset + block_run_idx;
+        int block_run_idx = thread_run_offset + i;
+        int global_run_idx = block_run_offset + block_run_idx;
         if (block_run_idx < block_runs) {
             thread_values[i] = values[global_run_idx];
             thread_lengths[i] = lengths[global_run_idx];  
         }
     }
 
-    // Initialize decoder (and get total decoded size)
-    // By construction it should amount to items_per_thread * block_dim;
+    // Initialize decoder and get total decoded size from it (not used further)
+    // As a check, by construction total_decoded_size should be equal to items_per_thread * block_dim
     int total_decoded_size = 0;
     DecodeT decoder(dc_temp, thread_values, thread_lengths, total_decoded_size);
     
+    // Run decoding of a batch of elements (the number is the width of the window, which 
+    // depends on the template parameters). 
+    // Generally, this should be in a while loop, since more than one batch of decoded 
+    // elements may be required to decode all the sequence. 
+    // In this case, we specialized the template to get the window size equal to the number
+    // of elements to decode (per block), i.e. items_per_thread * 32 (threads in a block)
+    // thus we only need one decoding pass to get them all. 
     int decoded_items[items_per_thread];
     decoder.RunLengthDecode(decoded_items, /* offset */ 0);
 
-    const int block_offset = blockIdx.x * blockDim.x * items_per_thread;
-    StoreT(st_temp).Store(output + block_offset, decoded_items);
+    // Store results in the correct output position
+    const int block_output_offset = blockIdx.x * blockDim.x * items_per_thread;
+    StoreT(st_temp).Store(output + block_output_offset, decoded_items);
 }
 
 
@@ -78,7 +89,7 @@ __global__ void blockEncode (int* input, int* sizes, int* values, int* lengths) 
 
     // If lengths or values are nullptr, only output size required on each block
     if (values == nullptr || lengths == nullptr) {
-        if (threadIdx.x == blockDim.x -1) {
+        if (threadIdx.x == (blockDim.x -1)) {
             sizes[blockIdx.x] = thread_scanned_mask[items_per_thread - 1]; 
         }
         return;
@@ -89,17 +100,13 @@ __global__ void blockEncode (int* input, int* sizes, int* values, int* lengths) 
 
     // Get offset for writing in output array (equals the number of runs 
     // assigned to the prev block if block_idx != 0, else 0)
-    int offset = 0;
-    if (blockIdx.x != 0) offset = sizes[blockIdx.x -1];
+    int offset = (blockIdx.x != 0) ? sizes[blockIdx.x-1] : 0;
 
-    // Write values to their place, and use lengths as temp to store thread idxs
-    // corresponding 
-
-    // For each element of the thread, it is the start of a run (i.e. if it has
-    // a 1 in the discontinuity mask), write its value in correct position (i.e.
+    // For each element of the thread, if it is the start of a run (i.e. if it has
+    // a 1 in the discontinuity mask) write its value in correct position (i.e.
     // the one written in the scanned mask + offset from prev block - 1), and 
     // store the item's idx (thread_idx * items_per_thread + item_in_thread_idx)
-    // in the lengths array.
+    // in the lengths array to later get run length.
     for (int i = 0; i < items_per_thread; ++i) {
         if (thread_discont_mask[i] == 1) {
             int item_idx = threadIdx.x * items_per_thread + i;
@@ -118,11 +125,10 @@ __global__ void blockEncode (int* input, int* sizes, int* values, int* lengths) 
     // Last active thread (idx = size-1) computes lenght as difference between 
     // its starting index and the index of the last block's item.
     int size = sizes[blockIdx.x];
-    int run_length;
     for (int thread_lid = threadIdx.x; thread_lid < size; thread_lid += blockDim.x) {
         int thread_gid = offset + thread_lid;
-        run_length = (thread_lid < (size - 1)) ? lengths[thread_gid + 1] - lengths[thread_gid]
-                                               : blockDim.x * items_per_thread - lengths[thread_gid];
+        int run_length = (thread_lid < (size - 1)) ? lengths[thread_gid + 1] - lengths[thread_gid]
+                                                   : blockDim.x * items_per_thread - lengths[thread_gid];
         __syncthreads();
         lengths[thread_gid] = run_length;
     }
@@ -139,16 +145,15 @@ int main() {
 
     // Populate input with random sequences of integers
     std::random_device rd;
-    std::uniform_int_distribution<int> rand_length(1,6);
-    std::uniform_int_distribution<int> rand_value(1,9);
+    std::uniform_int_distribution<int> rand_length(1,9);
+    std::uniform_int_distribution<int> rand_value(0,9);
 
-    int v, l = 0; // skip first increment with l = 0
-    for (int i = 0; i < full_size; i += l) {
-        l = rand_length(rd);
+    int i = 0, l = 0, v = 0;
+    while (i < full_size) {
+        l = std::min(rand_length(rd), full_size - i); // Avoids going out of bounds
         v = rand_value(rd);
-        for (int k = 0; k < l; ++k) {
-            input[i+k] = v;
-        }
+        for (int j = 0; j < l; ++j) input[i+j] = v;
+        i += l;
     }
 
     // Allocate input, output and sizes arrays on device
@@ -166,6 +171,11 @@ int main() {
     // Get sizes from blockEncode(sizes of encoded seqs on each block)
     blockEncode<<<num_blocks, block_dim>>>(d_input, d_sizes, nullptr, nullptr);
     
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cout << "Error: " << cudaGetErrorString(err) << "\n";
+    }
+
     // Copy sizes array to host
     cudaMemcpy(sizes.data(), d_sizes, num_blocks * sizeof(int), cudaMemcpyDeviceToHost);
    
@@ -185,6 +195,11 @@ int main() {
 
     // Run encoding (this time for real)
     blockEncode<<<num_blocks, block_dim>>>(d_input, d_sizes, d_values, d_lengths);
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cout << "Error: " << cudaGetErrorString(err) << "\n";
+    }
 
     // Copy encoded sequences to host for printing
     cudaMemcpy(values.data(), d_values, encoded_size * sizeof(int), cudaMemcpyDeviceToHost);
