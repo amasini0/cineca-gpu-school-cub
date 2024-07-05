@@ -42,7 +42,6 @@ __global__ void warpExchange(int* vec, int* out1, int* out2) {
 int main() {
     // Useful values
     constexpr int threads_per_block = warps_per_block * threads_per_warp;
-    constexpr int items_per_warp = threads_per_block * items_per_thread;
     constexpr int allocation_size = num_blocks * threads_per_block * items_per_thread;
     
     // Create vectors on host

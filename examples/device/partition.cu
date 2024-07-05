@@ -1,10 +1,7 @@
 #include <iomanip>
 #include <iostream>
-#include <numeric>
-#include <random>
 #include <vector>
 #include <cub/cub.cuh>
-#include <cub/device/device_partition.cuh>
 
 // Define custom op for selection with __device__ call operator
 struct Even {
@@ -23,7 +20,7 @@ int main() {
     std::vector<int>  out1(num_items);
     std::vector<int>  out2(num_items);
 
-    // Initialize vector and flags with random values
+    // Populate items and flags vectors
     for (int i = 0; i < num_items; ++i) {
         int val = i + 1;
         items[i] = val;

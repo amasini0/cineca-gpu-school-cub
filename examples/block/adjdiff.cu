@@ -2,9 +2,7 @@
 #include <iostream>
 #include <numeric>
 #include <vector>
-#include <cub/block/block_adjacent_difference.cuh>
-#include <cub/block/block_load.cuh>
-#include <cub/block/block_store.cuh>
+#include <cub/cub.cuh>
 
 constexpr int num_blocks = 2;
 constexpr int block_dim_x = 8;
@@ -69,7 +67,7 @@ int main() {
     // Launch kernel with num_warps warps
     blockAdjDiff<<<num_blocks, block>>>(d_vec, d_out1, d_out2);
 
-    // Check that execution went well, or print error string
+    // Check for errors during execution
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << cudaGetErrorString(err) << std::endl;

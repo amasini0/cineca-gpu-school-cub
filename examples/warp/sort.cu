@@ -1,6 +1,5 @@
 #include <iomanip>
 #include <iostream>
-#include <numeric>
 #include <vector>
 #include <cub/cub.cuh>
 

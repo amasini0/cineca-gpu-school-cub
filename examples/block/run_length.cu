@@ -4,7 +4,6 @@
 #include <random>
 #include <vector>
 #include <cub/cub.cuh>
-#include <cub/block/block_run_length_decode.cuh>
 
 constexpr int num_blocks = 2;
 constexpr int block_dim = 32;
@@ -171,6 +170,7 @@ int main() {
     // Get sizes from blockEncode(sizes of encoded seqs on each block)
     blockEncode<<<num_blocks, block_dim>>>(d_input, d_sizes, nullptr, nullptr);
     
+    // Check for errors during kernel execution
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << "Error: " << cudaGetErrorString(err) << "\n";
@@ -195,7 +195,8 @@ int main() {
 
     // Run encoding (this time for real)
     blockEncode<<<num_blocks, block_dim>>>(d_input, d_sizes, d_values, d_lengths);
-
+    
+    // Check for errors during kernel execution
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << "Error: " << cudaGetErrorString(err) << "\n";
@@ -221,6 +222,12 @@ int main() {
     // Run decoding (use single block, it's easier)
     blockDecode<<<num_blocks, block_dim>>>(d_sizes, d_values, d_lengths, d_output);
 
+    // Check for errors during kernel execution
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cout << "Error: " << cudaGetErrorString(err) << "\n";
+    }
+    
     // Copy output (decoded) sequence to host for checking
     cudaMemcpy(output.data(), d_output, full_size * sizeof(int), cudaMemcpyDeviceToHost);
 

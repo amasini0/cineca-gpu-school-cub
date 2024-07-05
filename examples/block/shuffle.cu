@@ -1,6 +1,5 @@
 #include <iomanip>
 #include <iostream>
-#include <numeric>
 #include <vector>
 #include <cub/block/block_shuffle.cuh>
 #include <cub/cub.cuh>
@@ -76,7 +75,7 @@ int main() {
     // Launch kernel with num_warps warps
     blockShuffle<<<num_blocks, block>>>(d_vec, d_out1, d_out2);
 
-    // Check that execution went well, or print error string
+    // Check for errors during kernel execution
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << cudaGetErrorString(err) << std::endl;
@@ -87,7 +86,6 @@ int main() {
     cudaMemcpy(h_out2.data(), d_out2, allocation_size * sizeof(int), cudaMemcpyDeviceToHost);
 
     // Check results
-
     for (int i = 0; i < allocation_size; ++i) {
         const int j = i % items_per_block;
         if (j == 0) {

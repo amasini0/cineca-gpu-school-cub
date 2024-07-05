@@ -4,11 +4,11 @@
 #include <vector>
 #include <cub/cub.cuh>
 
-struct Square {
-    __device__ void operator() (int& x) { x *= x; };
+struct SquareAndAdd {
+    int val;
+    CUB_RUNTIME_FUNCTION explicit SquareAndAdd(int x) : val{x} {}
+    __device__ void operator() (int& x) { x *= x; x += val; };
 };
-
-using blocker = cub::WarpLoad<int, 4, cub::WARP_LOAD_DIRECT, 32>;
 
 int main() {
     // Useful values
@@ -16,7 +16,7 @@ int main() {
 
     // Initialize host vector
     std::vector<int> numbers(size);
-    std::vector<int> squares(size);
+    std::vector<int> results(size);
     std::iota(numbers.begin(), numbers.end(), 0);
     
     // Allocate device memory and copy from host
@@ -26,23 +26,23 @@ int main() {
     cudaMemcpy(d_numbers, numbers.data(), size * sizeof(int), cudaMemcpyHostToDevice);
 
     // DeviceFor application
-    cub::DeviceFor::ForEachN(d_numbers, size, Square());
+    cub::DeviceFor::ForEachN(d_numbers, size, SquareAndAdd(10));
 
-    // Check that execution went well, or print error string
+    // Check for errors during kernel execution
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << cudaGetErrorString(err) << std::endl;
     }
 
     // Copy result from device to host
-    cudaMemcpy(squares.data(), d_numbers, size * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(results.data(), d_numbers, size * sizeof(int), cudaMemcpyDeviceToHost);
 
     // Check results
     std::cout << "\n INPUT  OUTPUT\n";
     std::cout << "--------------\n";
     for (int i = 0; i < 20; ++i) {
         std::cout << std::setw(6) << numbers[i]
-                  << std::setw(6) << squares[i] << "\n";
+                  << std::setw(6) << results[i] << "\n";
     }
     
     // Free device memory and return

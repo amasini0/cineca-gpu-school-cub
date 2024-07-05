@@ -1,8 +1,9 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
-#include <random>
 #include <vector>
+
+#include <cuda_runtime.h>
 #include <cub/cub.cuh>
 
 constexpr int num_segments = 4;

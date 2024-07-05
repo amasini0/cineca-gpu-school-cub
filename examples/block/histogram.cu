@@ -1,6 +1,5 @@
 #include <iomanip>
 #include <iostream>
-#include <numeric>
 #include <vector>
 #include <cub/cub.cuh>
 
@@ -76,7 +75,7 @@ int main() {
     // Launch kernel with num_warps warps
     blockHistogram<<<num_blocks, block>>>(d_vec, d_out1, d_out2);
 
-    // Check that execution went well, or print error string
+    // Check for errors during kernel execution
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cout << cudaGetErrorString(err) << std::endl;
