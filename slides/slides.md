@@ -534,7 +534,7 @@ Try to use the warp collective <span style="color: #72b300">`cub::WarpMergeSort`
 
 __global__ void warpSort(int* vec, int* out) {
   // Custom sort operation
-  auto less = [=](const auto& x, const auto& y) { return x < y; };
+  auto less = [=](auto& x, auto& y) { return x < y; };
 
   // Array for thread-local items
   int thread_data[items_per_thread];  
@@ -584,26 +584,25 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_VECTORIZE, threads_per_warp>;
-using WarpSorter = cub::WarpMergeSort<int, items_per_thread, threads_per_warp>; 
-using WarpStorer = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_VECTORIZE, threads_per_warp>;
+using WarpLoader = cub::WarpLoad<int, items_per_thread, 
+  cub::WARP_LOAD_VECTORIZE, threads_per_warp>;
+// ...
 
 __global__ void warpSort(int* vec, int* out) {
-  auto less = [=](const auto& x, const auto& y) { return x < y; };
+  // ...
+  auto less = [=](auto& x, auto& y) { return x < y; };
   int thread_data[items_per_thread];
 
-  // Allocate shared memory for thread communication
-  // ...
-
-  // Assign thread local variables and data
-  const int warp_lid = threadIdx.x / threads_per_warp;
-  const int warp_gid = blockIdx.x * warps_per_block + warp_lid;
-  const int warp_offset = warp_gid * threads_per_warp * items_per_thread;
+  int warp_lid = threadIdx.x / threads_per_warp;
+  int warp_gid = blockIdx.x * warps_per_block + w_lid;
+  int warp_offset = warp_gid * threads_per_warp 
+                  * items_per_thread;
     
-  // Load data, sort them and put them back
-  WarpLoader(load_temp[warp_lid]).Load(vec + warp_offset, thread_data);
+  WarpLoader(load_temp[warp_lid]).Load(vec + warp_offset,
+    thread_data);
   WarpSorter(sort_temp[warp_lid]).Sort(thread_data, less);
-  WarpStorer(stre_temp[warp_lid]).Store(out + warp_offset, thread_data);
+  WarpStorer(store_temp[warp_lid]).Store(out+warp_offset, 
+    thread_data);
 }
 ```
 
@@ -668,27 +667,26 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-using BlockAdjDiffer = cub::BlockAdjacentDifference<int, block_dim_x, block_dim_y>; 
-using BlockLoader = cub::BlockLoad<int, block_dim_x, items_per_thread, cub::BLOCK_LOAD_VECTORIZE, block_dim_y>;
-using BlockStorer = cub::BlockStore<int, block_dim_x, items_per_thread, cub::BLOCK_STORE_VECTORIZE, block_dim_y>;
+using BlockAdjDiffer = cub::BlockAdjacentDifference<int, 
+  block_dim_x, block_dim_y>; 
+using BlockLoader = cub::BlockLoad<int, block_dim_x, 
+  items_per_thread, cub::BLOCK_LOAD_VECTORIZE, block_dim_y>;
+using BlockStorer = cub::BlockStore<int, block_dim_x, 
+  items_per_thread, cub::BLOCK_STORE_VECTORIZE, block_dim_y>;
 
-__global__ void blockAdjDiff(int* vec, int* out1, int* out2) {
-  // Allocate shared memory for thread communication
-  __shared__ BlockAdjDiffer::TempStorage temp; // <- not an array
+__global__ void blockAdjDiff(int* vec, int* out1, 
+                             int* out2) {
+  __shared__ BlockAdjDiffer::TempStorage temp;
   // ... 
 
   // Assign thread local variables and data
   auto op = [=](auto& x, auto& y){ return x - y; };
-  int block_offset = blockIdx.x * blockDim.x * blockDim.y * items_per_thread;
-  int thread_data[items_per_thread];
-  int diff_result[items_per_thread];
+  // ...
 
-  BlockLoader(ld_temp).Load(vec + block_offset , thread_data);
-  BlockAdjDiffer(temp).SubtractLeft(thread_data, diff_result, op);
-  BlockStorer(st_temp).Store(out1 + block_offset, result_left);
-  __syncthreads() // this may be required when reusing temp storage
-  BlockAdjDiffer(temp).SubtractRight(thread_data, diff_result, op);
-  BlockStorer(st_temp).Store(out2 + block_offset, diff_result);
+  BlockLoader(ldtmp).Load(vec + block_offset, thread_data);
+  BlockAdjDiffer(tmp).SubtractRight(thread_data,
+    diff_result, op);
+  BlockStorer(sttmp).Store(out2 + block_offset, diff_result);
 }
 ```
 
@@ -729,11 +727,12 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-using BlockHistT = cub::BlockHistogram<int, block_dim_x, items_per_thread, bins, cub::BLOCK_HISTO_ATOMIC, block_dim_y>; 
+using BlockHistT = cub::BlockHistogram<int, block_dim_x, 
+  items_per_thread, bins, cub::BLOCK_HISTO_ATOMIC, 
+  block_dim_y>; 
 
-__global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
-  // - Allocate shared memory for thread communication
-  // - Load thread-local data
+__global__ void blockHistogram(int* vec, unsigned* out1, 
+                               unsigned* out2) {
   // ...
 
   // Allocate shared memory for bin counts
@@ -747,9 +746,6 @@ __global__ void blockHistogram(int* vec, unsigned* out1, unsigned* out2) {
   // Shortcut init + compositing, then keep compositing
   BlockHistT(hi_temp).Histogram(thread_data, bin_counts2);
   BlockHistT(hi_temp).Composite(thread_data, bin_counts2);
-
-  // Store results
-  // ...
 }
 ```
 
@@ -788,26 +784,25 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-using BlockShuffleT = cub::BlockShuffle<int, block_dim_x, block_dim_y>; 
+using BlockShuffleT = cub::BlockShuffle<int, 
+  block_dim_x, block_dim_y>; 
 
-__global__ void blockShuffle(int* vec, int* out1, int* out2) {
-  // - Allocate shared memory for thread communication
-  // - Load thread-local data
+__global__ void blockShuffle(int* vec, int* out1, 
+                             int* out2) {
   // ...
 
   // Data to be shuffled
-  int shuf_item = thread_data[0]; // First element of each thread
-  int shuf_block[items_per_thread];
+  int shf_item = thread_data[0]; // First el. of each thread
+  int shf_block[items_per_thread];
     
   // Shuffle a single value (Offset, Rotate)
-  BlockShuffleT(shuf_temp).Offset(shuf_item, shuf_item, 2);
-  __syncthreads(); // This is required to get correct results
+  BlockShuffleT(shuf_temp).Offset(shf_item, shf_item, 2);
+  __syncthreads(); // Required when reusing temp storage
 
   // Shuffle an entire block of items (Up/Down)
-  shuf_block[0] = 111; // This is left unchanged by .Up(...) 
-  BlockShuffleT(shuf_temp).Up(thread_data, shuf_block);
+  shf_block[0] = 111; // This is left unchanged by .Up(...) 
+  BlockShuffleT(shf_temp).Up(thread_data, shf_block);
 
-  // Store results 
   // ...
 }
 ```
@@ -854,20 +849,22 @@ Try to use <span style="color: #72b300">`cub::BlockRunLengthDecode`</span> to de
 // TODO:
 // 1 - Specialize required templates 
 
-__global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) {
+__global__ void blockDecode(int* sizes, int* values, 
+                            int* lengths, int* output) {
     // TODO:
-    // 2 - Initialize temp storage and declare thread-local arrays
-    // 3 - Load data (runs_per_thread values and lengths for each thread)
+    // 2 - Initialize temp storage
+    // 3 - Declare thread-local arrays
+    // 3 - Load runs_per_thread vals and lens on each thread
     // 4 - Initialize decoder
     // 5 - Decode window of elements
-    // 6 - Store decoded elements in appropriate output location
+    // 6 - Store results
 }
 
 // HINTS (for one possible solution):
-// 1 - Not all threads should receive proper data, some may have zero-filled arrays
-// 2 - The number of decoded items per block, is known (check allocations)
-// 3 - You may want to leave the template specializations as they are
-// 4 - You can decode all items with a single call to RunLengthDecode
+// 1 - Some threads may have zero-filled arrays
+// 2 - Number of decoded items per block is known
+// 3 - Leave template specializations as they are
+// 4 - Decode all items with a single RunLengthDecode
 ```
 
 </div>
@@ -904,27 +901,27 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-__global__ void blockDecode(int* sizes, int* values, int* lengths, int* output) {
-    // ...
-    int thread_values[runs_per_thread] = { 0 }; // init to zero, this is required
-    int thread_lengths[runs_per_thread] = { 0 }; // init to zero, this is required
+__global__ void blockDecode(int* sizes, int* values,
+                            int* lengths, int* output) {
+  // ...
+  int thread_values[runs_per_thread] = { 0 }; // init to zero, this is required
+  int thread_lengths[runs_per_thread] = { 0 }; // init to zero, this is required
     
-    int global_run_offset = (blockIdx.x != 0) ? sizes[blockIdx.x - 1] : 0;
-    int block_run_offset = threadIdx.x * runs_per_thread;
-    int block_runs = sizes[blockIdx.x];
-    for (int thread_run = 0; thread_run < runs_per_thread; ++thread_run) {
-        int block_run = block_run_offset + thread_run;
-        int global_run = global_run_offset + block_run;
-        if (block_run < block_runs) {
-            thread_values[i] = values[global_run];
-            thread_lengths[i] = lengths[global_run];  
-        }
-    }
+  int global_run_offset = (blockIdx.x != 0) ? sizes[blockIdx.x - 1] : 0;
+  int block_run_offset = threadIdx.x * runs_per_thread;
+  int block_runs = sizes[blockIdx.x];
+  for (int thread_run = 0; thread_run < runs_per_thread; ++thread_run) {
+    int block_run = block_run_offset + thread_run;
+    int global_run = global_run_offset + block_run;
+    if (block_run < block_runs) {
+      thread_values[i] = values[global_run];
+      thread_lengths[i] = lengths[global_run];  
+      }
+  }
 
-    int decoded_items[items_per_thread], total_decoded_size = 0;
-    DecodeT decoder(dc_temp, thread_values, thread_lengths, total_decoded_size);
-    decoder.RunLengthDecode(decoded_items, /* offset */ 0);
-    // ...
+  int decoded_items[items_per_thread], total_decoded_size = 0;
+  DecodeT decoder(dc_temp, thread_values, thread_lengths, total_decoded_size);
+  decoder.RunLengthDecode(decoded_items, /* offset */ 0);
 }
 ```
 
