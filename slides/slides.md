@@ -260,10 +260,10 @@ CUB’s algorithms are unique at each layer, but offer similar usage experiences
 
 Invoking any CUB algorithm follows the same general pattern:
 
-1. Select the class for the desired algorithm
-3. Allocate the temporary storage
-4. Pass the temporary storage to the algorithm
-5. Invoke it via the appropriate member function
+1. Specialize the class template for the desired algorithm
+3. Allocate temporary storage if required
+4. Initialize a class object (passing the temporary storage)
+5. Invoke the appropriate class member function to execute the algorithm
 
 
 </div>
@@ -309,22 +309,20 @@ level: 2
 using WarpReducer = cub::WarpReduce<int, threads_per_warp>;
 
 __global__ void warpReduction(int* vec, int* out) {
-  // Allocate shared memory for thread communication
   __shared__ WarpReducer::TempStorage temp[warps_per_block];
 
   if (threadIdx.x % 32 < threads_per_warp) {
-    // Assign thread local variables and data
     int warp_lid = threadIdx.x / 32;
     int warp_gid = blockIdx.x * warps_per_block + warp_lid;
     int thread_gid = global_wid * threads_per_warp
                    + threadIdx.x % 32; 
     int thread_data = vec[global_tid];
 
-    // Compute reduction
+    // Compute reduction to lane0
     int warp_sum = WarpReducer(temp[local_wid])
                   .Sum(thread_data);
 
-    // Output from lane0
+    // Output only from lane0
     if (threadIdx.x % 32 == 0) out[global_wid] = warp_sum;
   }
 }
@@ -336,15 +334,22 @@ __global__ void warpReduction(int* vec, int* out) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for reduction**:
+**Things to remember**:
 
-1. specialize template with data type and logical warp size (max 32)
-2. allocate block shared memory for thread communication
-3. initialize `warpReducer` object passing current warp shared memory slot
-4. reduce to `lane0` using one reduction function
+- Logical warp sizes `0 <= n < 32` allowed
+- `if` block required only for non-power-of-two warp sizes
+- Shared memory for communication required
+- Must allocate enough for all warps in block
+- Class constructor takes warp memory spot
+- Reduction writes to `lane0` of each warp
+- Generic `.Reduce(input, op)` available
 
-All available reductions are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpReduce.html).
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpReduce.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -369,11 +374,9 @@ layout: two-cols-header
 using WarpScanner = cub::WarpScan<int, threads_per_warp>;
 
 __global__ void warpScan(int* vec, int* out, int* agg) {
-  // Allocate shared memory for thread communication
   __shared__ WarpScanner::TempStorage temp[warps_per_block];
 
   if (threadIdx.x % 32 < threads_per_warp) {
-    // Assign thread local variables and data
     int warp_lid = threadIdx.x / 32;
     int warp_gid = blockIdx.x * warps_per_block + warp_lid;
     int thread_gid = warp_gid * threads_per_warp 
@@ -381,13 +384,14 @@ __global__ void warpScan(int* vec, int* out, int* agg) {
     int thread_data = vec[global_tid];
     int thread_prod, warp_aggregate;
     
-    // Compute scan inside each warp
+    // Compute scan of each warp
     WarpScanner(temp[warp_lid]).InclusiveScan(
       thread_data, thread_prod, op, warp_aggregate);
-    // ...
   }
 }
 ```
+
+<br>
 
 </div>
 
@@ -395,15 +399,22 @@ __global__ void warpScan(int* vec, int* out, int* agg) {
 
 <div style="margin: auto; padding-left: 50px;">
 
-**Steps for scan**:
+**Things to remember**:
 
-1. Specialize template with data type and logical warp size (max 32)
-2. Allocate block shared memory for in-warp thread communication
-3. Initialize `WarpScanner` object passing current warp shared memory slot
-4. Call `.InclusiveScan(...)` or one its variants
+- Similar to reduction in usage
+- Outputs to a dedicated array
+- Also outputs value of last warp item separately
+- `.InclusiveScan` and `.ExclusiveScan` versions available
+- Dedicated methods for sum available
 
-All available variants are listed [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpScan.html).
+<br>
 
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpScan.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -470,26 +481,27 @@ level: 2
 <div style="max-width: 450px">
 
 ```c++
-using WarpLoader = cub::WarpLoad<int, items_per_thread, cub::WARP_LOAD_DIRECT, threads_per_warp>;
-using WarpExchanger = cub::WarpExchange<int, items_per_thread, threads_per_warp>;
-using WarpStorerBL = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_DIRECT, threads_per_warp>;
-using WarpStorerST = cub::WarpStore<int, items_per_thread, cub::WARP_STORE_STRIPED, threads_per_warp>;
+using WarpLoader = cub::WarpLoad<int, items_per_thread, 
+  cub::WARP_LOAD_DIRECT, threads_per_warp>;
+using WarpExchanger = cub::WarpExchange<int, 
+  items_per_thread, threads_per_warp>;
+// ... 
 
-__global__ void warpExchange(int* vec, int* out1, int* out2) {
-  // Allocate shared memory for thread communication
+__global__ void warpExchange(int* vec, int* out1, 
+                             int* out2) {
   // ... 
-  
-  // Assign thread-local variables and data
   int warp_lid = threadIdx.x / threads_per_warp;
   int warp_gid = blockIdx.x * warps_per_block + warp_lid;
-  int warp_offset = warp_gid * threads_per_warp * items_per_thread;
+  int warp_offset = warp_gid * threads_per_warp 
+                  * items_per_thread;
   int thread_data[items_per_thread];
 
-  // Load blocked, exchange, store blocked and striped
-  WarpLoader(ld_temp[warp_lid]).Load(vec + warp_offset, thread_data); 
-  WarpExchanger(ex_temp[warp_lid]).BlockedToStriped(thread_data, thread_data);
-  WarpStorerBL(bl_temp[warp_lid]).Store(out1 + warp_offset, thread_data);
-  WarpStorerST(st_temp[warp_lid]).Store(out2 + warp_offset, thread_data);
+  WarpLoader(ld_temp[warp_lid]).Load(
+    vec + warp_offset, thread_data); 
+  WarpExchanger(ex_temp[warp_lid]).BlockedToStriped(
+    thread_data, thread_data);
+  WarpStorerBL(bl_temp[warp_lid]).Store(
+    out1 + warp_offset, thread_data);
 }
 ```
 
@@ -499,13 +511,19 @@ __global__ void warpExchange(int* vec, int* out1, int* out2) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Note**:
+**Things to remember**:
 
-- Load/store algorithms must be specified in the class template.
-- Exchange algorithm defaults to `cub::WARP_EXCHANGE_SHMEM`.
-- All these collectives only allow a power-of-two `threads_per_warp`.
-- `.Store(...)` and `.Load(...)` take a pointer to the first element of the warp as first argument.
+- Load/store/exchange algorithm must be specified in class template
+- Defaults are `DIRECT` for load/store and `SHMEM` for exchange
+- Only power-of-two logical warp sizes allowed
+- `.Store(...)` and `.Load(...)` take pointer to first element of warp as first argument
 
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpLoad.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -562,8 +580,12 @@ __global__ void warpSort(int* vec, int* out) {
 2. Fill the device function in the template, initially it is like the one on the left
 3. If the code is correct, the output values should be sorted
 
-Check the page for `WarpMergeSort` [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html).
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -612,13 +634,20 @@ __global__ void warpSort(int* vec, int* out) {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Note**:
+**Notes**:
 
-- Only works with a power-of-two `threads_per_warp` value
-- Uses `cub::WARP_LOAD_VECTORIZED` to load thread-local items faster
-- Same thing for storing the sorted items
+- Only works for power-of-two warp sizes
+- Uses vectorized algorithms to load/store thread-local items faster
 - Vectorized algorithms work with data in blocked format
+- Sort happens in place inside array
+- Custom operation for sorting can be provided
 
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1WarpMergeSort.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -696,16 +725,20 @@ __global__ void blockAdjDiff(int* vec, int* out1,
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for adj. diff. computation**:
+**Things to remember**:
 
-1. Specialize templates passing `x,y,z` block dimensions (default is `1`)
-2. Load/store require `items_per_thread` and algorithm after block dimension `x`
-3. Allocate required temporary storage (note: not an array anymore!)
-4. Call `.SubtractLeft` or `.SubtractRight`
-5. Synchronization may be required when reusing temp storage
+- Block-collectives' templates require `x,y,z` block dimensions (defaulting to 1)
+- Load/store require `items_per_thread` and algorithm after block dim `x`
+- Single 'unit' of temp. storage required
+- `.SubtractLeft` abd `.SubtractRight` variants available
+- Block load/store take pointer to the first element of the block
 
-More info on the [manual page](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockAdjacentDifference.html). 
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockAdjacentDifference.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -755,14 +788,20 @@ __global__ void blockHistogram(int* vec, unsigned* out1,
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for histogram**:
+**Things to remember**:
 
-1. Specialize template and allocate required shared memory (as usual)
-3. Allocate more shared memory for bin counts aggregation
-4. Create histogram with `.InitHistogram` + `.Composite`, or just using `.Histogram`
-5. Values passed to histogram must be in range `[0, bins)`
+- Template requires number of histogram bins 
+- More shared memory for computing bin counts required
+- Histogram created with `.InitHistogram` + `.Composite`, or just using `.Histogram`
+- Further compositing allowed
+- Values passed to histogram must be in range `[0, bins)`
 
-More details can be found [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockHistogram.html).
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockHistogram.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -796,14 +835,12 @@ __global__ void blockShuffle(int* vec, int* out1,
   int shf_block[items_per_thread];
     
   // Shuffle a single value (Offset, Rotate)
-  BlockShuffleT(shuf_temp).Offset(shf_item, shf_item, 2);
+  BlockShuffleT(shf_temp).Offset(shf_item, shf_item, 2);
   __syncthreads(); // Required when reusing temp storage
 
   // Shuffle an entire block of items (Up/Down)
   shf_block[0] = 111; // This is left unchanged by .Up(...) 
   BlockShuffleT(shf_temp).Up(thread_data, shf_block);
-
-  // ...
 }
 ```
 </div>
@@ -812,17 +849,21 @@ __global__ void blockShuffle(int* vec, int* out1,
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for shuffling**:
+**Things to remember**:
 
-1. Specialize template (nothing fancy here)
-2. Allocate shared memory for tread communication
-3. Use the appropriate operation:
+- No particular template argument
+- Appropriate operation depends target:
     - `.Offset`/`.Rotate` for single items
-    - `.Up`/`.Down` for blocks of items
-4. Pay attention to synchronization errors and first/last elements 
+    - `.Up`/`.Down` for whole blocks
+- Depending on operation, first/last block-items may be unaffected 
+- Explicit sycnhronization required when reusing temp storage
 
-For more details click [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockShuffle.html#_CPPv4I0_i_i_i_iEN3cub12BlockShuffleE).
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockShuffle.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -852,11 +893,10 @@ Try to use <span style="color: #72b300">`cub::BlockRunLengthDecode`</span> to de
 __global__ void blockDecode(int* sizes, int* values, 
                             int* lengths, int* output) {
     // TODO:
-    // 2 - Initialize temp storage
-    // 3 - Declare thread-local arrays
+    // 2 - Initialize temp storage and thread-local arrays
     // 3 - Load runs_per_thread vals and lens on each thread
     // 4 - Initialize decoder
-    // 5 - Decode window of elements
+    // 5 - Run decoding
     // 6 - Store results
 }
 
@@ -879,7 +919,14 @@ __global__ void blockDecode(int* sizes, int* values,
 2. Fill the device function in the template, initially it is like the one on the left
 3. At the end of output there is a message saying if decode was successful or not
 
-`BlockRunLengthDecode` docs are [here](https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockRunLengthDecode.html#_CPPv4I0_i_i_i0_i_iEN3cub20BlockRunLengthDecodeE). 
+Try to follow the hints if you have no ideas.
+
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockRunLengthDecode.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -904,40 +951,44 @@ layout: two-cols-header
 __global__ void blockDecode(int* sizes, int* values,
                             int* lengths, int* output) {
   // ...
-  int thread_values[runs_per_thread] = { 0 }; // init to zero, this is required
-  int thread_lengths[runs_per_thread] = { 0 }; // init to zero, this is required
-    
-  int global_run_offset = (blockIdx.x != 0) ? sizes[blockIdx.x - 1] : 0;
-  int block_run_offset = threadIdx.x * runs_per_thread;
-  int block_runs = sizes[blockIdx.x];
-  for (int thread_run = 0; thread_run < runs_per_thread; ++thread_run) {
-    int block_run = block_run_offset + thread_run;
-    int global_run = global_run_offset + block_run;
-    if (block_run < block_runs) {
-      thread_values[i] = values[global_run];
-      thread_lengths[i] = lengths[global_run];  
-      }
-  }
 
-  int decoded_items[items_per_thread], total_decoded_size = 0;
-  DecodeT decoder(dc_temp, thread_values, thread_lengths, total_decoded_size);
+  int thread_values[runs_per_thread] = { 0 }; // zero init.
+  int thread_lengths[runs_per_thread] = { 0 }; // zero init.
+    
+  // Manually assign runs_per_thread items from values and
+  // lengths to each thread until runs are available. 
+  // After all runs have been assigned, remaining threads 
+  // will have zero-filled local arrays (due to above init.)
+
+  int decoded_items[items_per_thread]
+  int total_decoded_size = 0;
+  DecodeT decoder(dc_temp, thread_values, thread_lengths, 
+    total_decoded_size);
   decoder.RunLengthDecode(decoded_items, /* offset */ 0);
 }
 ```
-
+<br>
 </div>
 
 ::right::
 
 <div style="margin: auto; padding-left: 50px">
 
-**Note**:
+**Notes**:
 
 - Thread-local run values and lengths are initialized to zero
-- Not all threads receive proper data (some will have zero-filled arrays)
+- Not all threads receive data (some will have zero-filled arrays)
 - All items are decoded in a single pass 
-- Check the full version of the solution for more comments
+- Offset is relevant when decoding in multiple batches
+- Check detailed comments in full solution
 
+<br>
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/classcub_1_1BlockRunLengthDecode.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -984,11 +1035,9 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-// Define input items and partitioning flags
-// Allocate and populate device memory locations
 // ...
 
-//Get memory requirements for algorithm
+// Get memory requirements for algorithm
 void *p_temp_storage_1 = nullptr;
 size_t temp_storage_1_bytes = 0; // This must be size_t
 cub::DevicePartition::Flagged(
@@ -1005,23 +1054,29 @@ cub::DevicePartition::Flagged(
 
 // ...
 ```
-
+<br>
 </div>
 
 ::right::
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for partitioning**:
+**Things to remember**:
 
-1. Define flags/filter to determine selected elements
-2. Allocate and populate required memory locations
-3. Call algorithm a first time to get required temporary storage size (in bytes)
-4. Allocate temporary storage
-5. Call algorithm again to get results
+- Used directly inside host functions (`main` here)
+- Two calls required:
+    - first gets required temporary storage size 
+    - second executes the collective
+- Flags array/filter function required to determine selected elements
+- Temp storage must be deallocated at the end
 
-Check all available partition algorithms [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DevicePartition.html).
+<br>
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/structcub_1_1DevicePartition.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -1058,12 +1113,11 @@ struct SquareAndAdd {
 ```c++
 int main() {
   //...
-  // Copy input data on device
 
   // Update input array in place
-  cub::DeviceFor::ForEachN(d_numbers, size, SquareAndAdd(10));
+  cub::DeviceFor::ForEachN(d_numbers, size, 
+    SquareAndAdd(10));
 
-  // Copy updated data back to host
   // ...
 }
 ```
@@ -1074,16 +1128,19 @@ int main() {
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps**: 
-1. Check [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceFor.html#_CPPv4N3cub9DeviceForE) the requirements for the selected `DeviceFor` variant
-2. Set up required device storage locations
-3. Call the algorithm to get results
+**Things to remember**: 
 
-**Note**: 
+- Variants with and without temp storage requirements available
+- Func. obj. used on device must have a `__device__` call operator
+- Non-default func. obj. constructor must be `CUB_RUNTIME_FUNCTION` and `explicit`
+- Requires recent version of CCCL
 
-- func. obj. used on device must have a `__device__` call operator
-- non-default constructor must be declared `CUB_RUNTIME_FUNCTION` and `explicit`
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceFor.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 ---
@@ -1120,8 +1177,6 @@ layout: two-cols-header
 <div style="max-width: 450px">
 
 ```c++
-// Define num segments and their offsets
-// Allocate and populate device memory locations
 // ...
 
 // Determine temporary device storage requirements
@@ -1129,7 +1184,8 @@ void* p_temp_storage_sum = nullptr;
 size_t temp_storage_sum_bytes = 0;
 cub::DeviceSegmentedReduce::Sum(
   p_temp_storage_sum, temp_storage_sum_bytes, 
-  d_items, d_sums, num_segments, d_offsets, d_offsets + 1);
+  d_items, d_sums, 
+  num_segments, start_offsets, end_offsets);
 
 // Allocate required temporary storage
 cudaMalloc(&p_temp_storage_sum, temp_storage_sum_bytes);
@@ -1137,7 +1193,8 @@ cudaMalloc(&p_temp_storage_sum, temp_storage_sum_bytes);
 // Perform the reduction
 cub::DeviceSegmentedReduce::Sum(
   p_temp_storage_sum, temp_storage_sum_bytes, 
-  d_items, d_sums, num_segments, d_offsets, d_offsets + 1);
+  d_items, d_sums, 
+  num_segments, start_offsets, end_offsets);
 
 // ...
 ```
@@ -1148,16 +1205,19 @@ cub::DeviceSegmentedReduce::Sum(
 
 <div style="margin: auto; padding-left: 50px">
 
-**Steps for segmented algorithm**:
+**Things to remember**:
 
-1. Define the number of segments
-2. Define begin and end offsets for each segment
-3. Call the algorithm a first time to get required temporary storage size (in bytes)
-4. Allocate temporary storage
-5. Call algorithm again to get results
+- Requires number of segments
+- Requires array of start/end offset of each segment
+- Builtin `.Sum`, `.Max`, `.ArgMax`, `.Min` and `.ArgMin` reductions available 
+- Generic `.Reduce(..., op)` available
 
-Check available reductions [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSegmentedReduce.html).
+</div>
 
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSegmentedReduce.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -1182,7 +1242,6 @@ Try to filter elements in a sequence using <span style="color: #72b300">`cub::De
 
 ```c++
 // ...
-// Allocate pointer to store number of not selected elements
 void *p_num_selected;
 cudaMalloc(&p_num_selected, sizeof(int));
 int* d_num_selected = static_cast<int*>(p_num_selected);
@@ -1196,9 +1255,9 @@ int* d_num_selected = static_cast<int*>(p_num_selected);
 
 // ------------------------------------------------------ //
 
-// Copy number of uniques back to host
 int num_selected = 0;
-cudaMemcpy(&num_selected, d_num_selected, sizeof(int), cudaMemcpyDeviceToHost);
+cudaMemcpy(&num_selected, d_num_selected, sizeof(int), 
+  cudaMemcpyDeviceToHost);
 // ...
 ```
 
@@ -1214,7 +1273,12 @@ cudaMemcpy(&num_selected, d_num_selected, sizeof(int), cudaMemcpyDeviceToHost);
 2. Fill the code required in the template, initially it is like the one on the left
 3. Check the output to see if the selected elements are correct
 
-More info on `cub::DeviceSelect` [here](https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSelect.html).
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSelect.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -1245,29 +1309,39 @@ int* d_num_selected = static_cast<int*>(p_num_selected);
 void *p_temp_storage = nullptr;
 size_t temp_storage_bytes = 0;
 cub::DeviceSelect::If(
-  p_temp_storage, temp_storage_bytes,
-  d_items, d_uniqs, d_num_selected, num_items, LessThan(threshold));
+  p_temp_storage, temp_storage_bytes, d_items, d_uniqs, 
+  d_num_selected, num_items, LessThan(threshold));
 
 // Allocate temporary storage
 cudaMalloc(&p_temp_storage, temp_storage_bytes);
 
 // Run selection
 cub::DeviceSelect::If(
-  p_temp_storage, temp_storage_bytes,
-  d_items, d_uniqs, d_num_selected, num_items, LessThan(threshold));
+  p_temp_storage, temp_storage_bytes, d_items, d_uniqs, 
+  d_num_selected, num_items, LessThan(threshold));
 ```
 
+<br>
 </div>
 
 ::right::
 
 <div style="margin: auto; padding-left: 50px">
 
-**Note**:
+**Notes**:
 
-- Same as `cub::DevicePartition`
-- Only `num_selected` items are written in output in this case (not entire sequence)
+- Similar to `cub::DevicePartition` (probably faster)
+- Only selected items are written in output, not entire partitioned sequence
+- Flags array/filter function selections available
+- `.Unique` selects first items in sequences of repeated items
 
+<br>
+</div>
+
+<div style="width: 3%; position: fixed; bottom: 30px; right: 110px" align="right">
+  <a href="https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceSelect.html">
+    <img src="https://img.icons8.com/?size=100&id=XGYrMilGckgQ&format=png&color=000000" width="100%">
+  </a>
 </div>
 
 <div style="width: 3%; position: fixed; bottom: 30px; right: 65px" align="right"> 
@@ -1286,13 +1360,16 @@ cub::DeviceSelect::If(
 Some useful links:
 
 - <span style="color: #72b300;">NVIDIA/cccl GitHub repository</span> 
-
     - https://github.com/NVIDIA/cccl
+
+<br>
+
 - <span style="color: #72b300;">CUB official documentation</span> 
-
     - https://nvidia.github.io/cccl/cub/
-- <span style="color: #72b300;">GTC Training on CCCL</span> 
 
+<br>
+
+- <span style="color: #72b300;">GTC Training on CCCL</span> 
     - https://www.nvidia.com/en-us/on-demand/session/gtcspring21-cwes1801/
 
 </div>
